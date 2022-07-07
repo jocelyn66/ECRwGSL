@@ -1,27 +1,21 @@
 import torch.nn as nn
 from layers.gsl_layer import *
+from torch_geometric.nn import GATConv
 
 
-class GAT(nn.Module):
+class GAT_Net(nn.Module):
+    def __init__(self, in_features, hidden, out_features, heads=1):
+        super(GAT_Net, self).__init__()
+        self.gat1 = GATConv(in_features, hidden, heads=heads)
+        self.gat2 = GATConv(hidden*heads, out_features)
 
-    def __init__(self, args):
-        super(GAT, self).__init__()
-        pass
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
 
-        assert args.n_layers > 0
-        self.layers = nn.ModuleList()
-        self.build_layers(args)
-        self.name = args.gsl
+        x = self.gat1(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.gat2(x, edge_index)
+        pass    # adj
 
-    def build_layers(self, args):
-        pass
-
-        for i in range(self.n_layers):
-            self.layers.append(
-                GATLayer())
-
-    def forward(self, examples):
-        pass
-
-        for _, layer in enumerate(self.layers):
-            layer(examples)
+        return F.log_softmax(x, dim=1)

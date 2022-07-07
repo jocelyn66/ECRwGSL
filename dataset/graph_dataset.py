@@ -91,7 +91,7 @@ def load_dataset(dataset):
     :param dataset:
     :return: class KGDataset
     """
-    if dataset in ['ECB+']:
+    if dataset in ['ecb+']:
         return GDataset(dataset, DATA_PATH)
     else:
         raise ValueError('Unknown dataset: {}'.format(dataset))

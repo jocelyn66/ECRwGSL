@@ -110,7 +110,7 @@ def train(args, hps=None, set_hp=None, save_dir=None):
         if (epoch + 1) % args.valid_freq == 0:
             valid_metrics = compute_metrics(ranks)
             logging.info(format_metrics(valid_metrics, split="valid_"+args.metrics))
-            valid_f = valid_metrics["F"]
+            valid_f = valid_metrics['F']
             if not best_f or valid_f > best_f:
                 best_f = valid_f
                 counter = 0

@@ -8,5 +8,5 @@ name2gsl = {
 }
 
 name2init = {
-    'knn': 'KNN'
+    'knn': 'knn_init'
 }

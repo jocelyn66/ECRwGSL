@@ -1,16 +1,17 @@
+from pkgutil import get_data
 import torch.nn as nn
 import gsl
 from utils.name2object import name2gsl, name2init
-import initializer
+from initializer import *
 
 
 class ECRModel(nn.Module):
 
     def __init__(self, args):
-        super(ECRModel, self).__init__()
-        pass
-        self.initializer = getattr(initializer, name2init)(args) if args.init_g else None
-        self.gsl = getattr(gsl, name2gsl[args.gsl])(args)
+        super(ECRModel, self).__init__(args, g_data)
+        name2init(g_data)
+        self.gsl = getattr(gsl, name2gsl[args.gsl])(args.rank, args.rank, args.rank)
 
-    def forward(self):
-        pass
+    def forward(self, batch):
+        self.gsl.forward(batch)
+    

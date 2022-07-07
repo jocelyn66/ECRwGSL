@@ -1,5 +1,7 @@
 import torch.nn as nn
+from torch_clsuter import knn
 
 
-class KNN(nn.Module):
-    pass
+def knn_init(g_data, k=3):
+    x = g_data.x
+    g_data.edge_index = knn(x, x, k)
