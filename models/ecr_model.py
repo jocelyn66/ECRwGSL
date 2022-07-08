@@ -7,11 +7,12 @@ from initializer import *
 
 class ECRModel(nn.Module):
 
-    def __init__(self, args):
-        super(ECRModel, self).__init__(args, g_data)
+    def __init__(self, args, g_data):
+        super(ECRModel, self).__init__(args)
         name2init(g_data)
-        self.gsl = getattr(gsl, name2gsl[args.gsl])(args.rank, args.rank, args.rank)
+        self.gsl = getattr(gsl, name2gsl[args.gsl])(args.rank, args.rank, args.rank, args.dropout)
 
     def forward(self, batch):
-        self.gsl.forward(batch)
+        adj = self.gsl.forward(batch)
+        return adj
     

@@ -1,5 +1,3 @@
-"""Knowledge Graph embedding model optimizers."""
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -23,41 +21,39 @@ class ECROptimizer(object):
         self.valid_freq = valid_freq
         self.dropout = dropout
 
-    def reduce_lr(self, factor=0.8):
-        """Reduce learning rate.
-
-        Args:
-            factor: float for the learning rate decay
-        """
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] *= factor
-
     def calculate_loss(self, examples):
         pass
 
-        predictions, factors = self.model(examples)    # list(所有可能实体),行
+        predictions, factors = self.model(examples)
         loss = self.loss_fn(predictions)
         if self.regularizer:
             loss += self.regularizer.forward(factors)
         return loss
 
-    def epoch(self, train_set):
+    def epoch(self, examples, target, mask):
 
-        losses = []
-        idx = [_ for _ in range(len(train_set))]
-        random.shuffle(idx)
-        for train_sample_num in tqdm(idx):
-            pass
+        actual_examples = examples[torch.randperm(examples.shape[0]), :]
+        with tqdm(total=examples.shape[0], unit='ex', disable=not self.verbose) as bar:
+            bar.set_description(f'train loss')
+            b_begin = 0
+            total_loss = 0.0
+            iter = 0
+            while b_begin < examples.shape[0]:
+                input_batch = actual_examples[b_begin:b_begin + self.batch_size].cuda()
 
-            loss = self.calculate_loss(train_set[train_sample_num])
+                l = self.calculate_loss(input_batch)
+                self.optimizer.zero_grad()
+                l.backward()
+                self.optimizer.step()
 
-            loss.backward()
-            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_norm)
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-            losses.append(loss.item())
+                b_begin += self.batch_size
 
-        return np.mean(losses)
+                total_loss += l
+                iter += 1
+                bar.update(input_batch.shape[0])
+                bar.set_postfix(loss=f'{l.item():.4f}')
+        total_loss /= iter
+        return total_loss
 
     def evaluate(self, test_data, valid_losses=False):
         pass

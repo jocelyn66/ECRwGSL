@@ -10,7 +10,6 @@ hps_lr = np.random.rand(search_size) * 0.004 + 0.001    # [0.001, 0.005]
 rs_hp_range = {
     "dropout": hps_dropout,
     "learning_rate": hps_lr,
-
 }
 
 
