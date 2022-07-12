@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.nn.modules.module import Module
 
 
+# GVAE
 class GraphConvolution(Module):
     """
     Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
