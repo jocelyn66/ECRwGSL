@@ -31,7 +31,7 @@ class GCNModelVAE(nn.Module):
 
 
 # GAE
-class GCNModelVAE(nn.Module):
+class GCNModelAE(nn.Module):
     def __init__(self, input_feat_dim, hidden_dim1, hidden_dim2, dropout):
         super(GCNModelVAE, self).__init__()
         self.gc1 = GraphConvolution(input_feat_dim, hidden_dim1, dropout, act=F.relu)

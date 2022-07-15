@@ -1,2 +1,2 @@
-from .ecr_optimizer import *
+from .gsl_optimizer import *
 from .regularizers import *

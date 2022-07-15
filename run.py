@@ -2,14 +2,13 @@ import json
 import logging
 import os
 import sys
-import itertools
+import time
 
 import torch.optim
 import math
 import numpy as np
 
 from dataset.graph_dataset import load_dataset
-from utils.evaluate import compute_metrics, format_metrics
 import models
 import optimizers.regularizers as regularizers
 from optimizers import *
@@ -17,6 +16,21 @@ from config import parser
 from utils.name2object import name2model
 from rs_hyperparameter import rs_tunes, rs_hp_range, rs_set_hp_func
 from utils.train import *
+from ECRwGSL.test import *
+import scipy.sparse as sp  # 稀疏矩阵
+from utils.evaluate import *
+
+from dataset.graph_dataset import GDataset
+
+import transformers
+from transformers import (
+    AutoModelForSeq2SeqLM,
+    AutoTokenizer,
+    BertTokenizer,
+    BertModel
+)
+from models.dataset_process import preprocess_function
+import json
 
 
 def set_logger(args):
@@ -52,29 +66,93 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
     model_name = "model_d{}_l{}.pt".format(
         args.rank, args.n_layers)
-    logging.info("Init graph = {}".format(args.init_g))
-    logging.info("#Layer = {}".format(args.n_layers))
-    logging.info("lr = {}".format(args.learning_rate))
-    logging.info("Dropout = {}".format(args.dropout))
     logging.info(args)
 
     if args.double_precision:
         torch.set_default_dtype(torch.float64)
 
-    # load data############################
-    dataset = load_dataset(args.dataset)
-    args.sizes = dataset.get_shape()
-    logging.info("\t " + str(dataset.get_shape()))
-    train_data = dataset['train']
-    valid_data = dataset['valid']
-    test_data = dataset['test']
+    # load data############################处理成图
+    # dataset = load_dataset(args.dataset)
+    # args.sizes = dataset.get_shape()
+    # logging.info("\t " + str(dataset.get_shape()))
+    # train_data = dataset['train']
+    # valid_data = dataset['valid']
+    # test_data = dataset['test']
+    #######
 
+    dataset = GDataset(args)
+
+    adj_orig, args.n_nodes, event_coref_adj = dataset.train_adjacency, dataset.n_nodes, dataset.event_coref_adj
+
+    # Store original adjacency matrix (without diagonal entries【0】) for later 
+    adj = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), shape=adj_orig.shape)
+    adj.eliminate_zeros()  # adj:对角线标签为0
+
+    # Some preprocessing
+    adj_norm = preprocess_graph(adj)
+    adj_label = adj + sp.eye(adj.shape[0])  # np.eye(n_nodes)
+    adj_label = torch.FloatTensor(adj_label.toarray())  # 对角线1
+
+    pos_weight = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
+    norm = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
+
+    # bert################################
+     #Load Datasets
+    data_files = {}
+    data_files["train"] = args.train_file
+    data_files["dev"] = args.dev_file
+    data_files["test"] = args.test_file
+    datasets = load_dataset("json", data_files=data_files)
+    #Load Schema
+    with open(args.schema_path, 'r') as f:
+        schema_list = json.load(f)
+        doc_schema = schema_list[0]
+        event_schema = schema_list[1]
+        entity_schema = schema_list[2]
+
+    #introduce PLM
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
+    plm = BertModel.from_pretrained(args.plm_name)
+
+    column_names = datasets["train"].column_names
+    train_dataset = datasets["train"]
+    train_dataset = train_dataset.map(
+        preprocess_function,
+        batched=True,
+        remove_columns=column_names,
+        load_from_cache_file= True,
+        fn_kwargs={'tokenizer':tokenizer, 'args':args, 'schema_list':schema_list, 'plm':plm},
+        cache_file_name = args.train_cache_file
+    )
+
+    dev_dataset = datasets["dev"]
+    dev_dataset = dev_dataset.map(
+        preprocess_function,
+        batched=True,
+        remove_columns=column_names,
+        load_from_cache_file= True,
+        fn_kwargs={'tokenizer':tokenizer, 'args':args, 'schema_list':schema_list, 'plm':plm},
+        cache_file_name = args.dev_cache_file
+    )
+
+    test_dataset = datasets["test"]
+    test_dataset = test_dataset.map(
+        preprocess_function,
+        batched=True,
+        remove_columns=column_names,
+        load_from_cache_file= True,
+        fn_kwargs={'tokenizer':tokenizer, 'args':args, 'schema_list':schema_list, 'plm':plm},
+        cache_file_name = args.test_cache_file
+    )
+    ######################
+
+    # create 
     use_cuda = torch.cuda.is_available()
     if not use_cuda:
         ValueError("WARNING: CUDA is not available!")
     args.device = torch.device("cuda" if use_cuda else "cpu")
 
-    model = getattr(models, name2model[args.model])(args)
+    model = getattr(models, name2model[args.model])(args, train_dataset, tokenizer, plm, schema_list, adj_norm)
     total = count_params(model)
     logging.info("Total number of parameters {}".format(total))
     model.to(args.device)    # GUP
@@ -83,91 +161,102 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     regularizer = None
     if args.regularizer:
         regularizer = getattr(regularizers, args.regularizer)(args.reg)
-    optimizer = ECROptimizer(model, optim_method, args.valid_freq, args.batch_size, regularizer,
-                            use_cuda, args.dropout)
+    optimizer = GAEOptimizer(model, optim_method, adj_label, args.n_nodes, norm, pos_weight, args.valid_freq, use_cuda, args.dropout)
 
     # start train######################################
     counter = 0
-    best_f = None
+    best_f1 = None
     best_epoch = None
     best_model_path = ''
+    hidden_emb = None
     logging.info("\t ---------------------------Start Optimization-------------------------------")
     for epoch in range(args.max_epochs):
+        t = time.time()
         model.train()
         if use_cuda:
             if hasattr(torch.cuda, 'empty_cache'):
                 torch.cuda.empty_cache()
 
-        loss = optimizer.epoch(train_data)
+        loss, mu = optimizer.epoch()
         logging.info("\t Epoch {} | average train loss: {:.4f}".format(epoch, loss))
         if math.isnan(loss.item()):
             break
 
-        # val#####################################
-        model.eval()
-        valid_loss, ranks = optimizer.evaluate(test_data)
-        logging.info("\t Epoch {} | average valid loss: {:.4f}".format(epoch, valid_loss))
-        if (epoch + 1) % args.valid_freq == 0:
-            valid_metrics = compute_metrics(ranks)
-            logging.info(format_metrics(valid_metrics, split="valid_"+args.metrics))
-            valid_f = valid_metrics['F']
-            if not best_f or valid_f > best_f:
-                best_f = valid_f
-                counter = 0
-                best_epoch = epoch
-                logging.info("\t Saving model at epoch {} in {}".format(epoch, save_dir))
-                best_model_path = os.path.join(save_dir, '{}_{}'.format(epoch, model_name))
-                torch.save(model.cpu().state_dict(), best_model_path)
-                if use_cuda:
-                    model.cuda()
+        # valid training set
+        hidden_emb = mu.data.numpy()
 
-            else:
-                counter += 1
-                if counter == args.patience:
-                    logging.info("\t Early stopping")
-                    break
-                elif counter == args.patience // 2:
-                    pass
+        model.eval()
+
+        metrics = test_model(hidden_emb, adj_orig, dataset.event_idx)
+        logging.info(format_metrics(metrics, 'Trian'))
+        logging.info("time=", "{:.5f}".format(time.time() - t))
+
+        # val#####################################
+
+        # 无监督
+        valid_loss, mu = optimizer.eval()
+        hidden_emb = mu.data.numpy()
+        metrics = test_model(hidden_emb, adj_orig['Valid'], dataset.event_idx['Valid'])
+        logging.info("\t Epoch {} | average valid loss: {:.4f}".format(epoch, valid_loss))
+
+        # # 有监督
+        # model.eval()
+        # if (epoch + 1) % args.valid_freq == 0:
+        #     # valid loss
+        #     # valid metircs
+        #     metrics = test_model()   # F1
+        #     logging.info("\t Epoch {} | average valid loss: {:.4f}".format(epoch, valid_loss))
+        #     logging.info(format_conll('Valid_F1'+valid_f1))  
+        #     if not best_f1 or valid_f1 > best_f1:
+        #         best_f1 = valid_f1
+        #         counter = 0
+        #         best_epoch = epoch
+        #         logging.info("\t Saving model at epoch {} in {}".format(epoch, save_dir))
+        #         best_model_path = os.path.join(save_dir, '{}_{}'.format(epoch, model_name))
+        #         torch.save(model.cpu().state_dict(), best_model_path)
+        #         if use_cuda:
+        #             model.cuda()
+
+        #     else:
+        #         counter += 1
+        #         if counter == args.patience:
+        #             logging.info("\t Early stopping")
+        #             break
+        #         elif counter == args.patience // 2:
+        #             pass
+        # ###################
+
+    logging.info("\t ---------------------------Optimization finished---------------------------")
 
     # test#########################
-    logging.info("\t ---------------------------Optimization finished---------------------------")
-    if not best_f:
-        best_model_path = os.path.join(save_dir, model_name)
-        torch.save(model.cpu().state_dict(), best_model_path)
-    else:
-        logging.info("\t Loading best model saved at epoch {}".format(best_epoch))
-        model.load_state_dict(torch.load(best_model_path))  # load best model
-    if use_cuda:
-        model.cuda()
-    model.eval()  # no BatchNormalization Dropout
+    # if not best_f1:
+    #     best_model_path = os.path.join(save_dir, model_name)
+    #     torch.save(model.cpu().state_dict(), best_model_path)
+    # else:
+    #     logging.info("\t Loading best model saved at epoch {}".format(best_epoch))
+    #     model.load_state_dict(torch.load(best_model_path))  # load best model
+    # if use_cuda:
+    #     model.cuda()
+    # model.eval()  # no BatchNormalization Dropout
 
-    # Validation metrics
-    logging.info("Evaluation Valid Set:")
-    _, rank = optimizer.evaluate(valid_data)
-    valid_metrics = compute_metrics(rank)
-    logging.info(format_metrics(valid_metrics))
+    # # Test metrics
+    # logging.info("Evaluation Test Set:")
+    # test_f1 = None
+    # conll_f1 = run_conll_scorer(args.output_dir)
+    # logging.info(conll_f1)
 
-    # Test metrics
-    logging.info("Evaluation Test Set:")
-    _, rank = optimizer.evaluate(train_data)
-    test_metrics = compute_metrics(rank)
-    logging.info(format_metrics(test_metrics))
-
-    logging.info("{:.3f}({:.3f})".format(test_metrics['F'], valid_metrics['F']))
-
-    logging.info("\t ---------------------------done---------------------------")
     end_model = datetime.datetime.now()
     logging.info('this model runtime: %s' % str(end_model - start_model))
-    logging.info("\t ---------------------------end---------------------------")
-    return test_metrics
+    logging.info("\t ---------------------------done---------------------------")
+    return best_f1
 
 
 def rand_search(args):
     pass
 
-    best_f = 0
+    best_f1 = 0
     best_hps = []
-    best_fs = []
+    best_f1s = []
 
     save_dir = set_logger(args)
     logging.info("** Random Search **")
@@ -196,9 +285,9 @@ def rand_search(args):
 
         test_metrics = train(args, hp_values, rs_set_hp_func, save_dir)
         logging.info('{} done'.format(grid_entry))
-        if test_metrics['F'] > best_f:
-            best_f = test_metrics['F']
-            best_fs.append(best_f)
+        if test_metrics['F'] > best_f1:
+            best_f1 = test_metrics['F']
+            best_f1s.append(best_f1)
             best_hps.append(grid_entry)
     logging.info("best hyperparameters: {}".format(best_hps))
 

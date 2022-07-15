@@ -1,19 +1,23 @@
 import datetime
 import os
 import torch
-import dgl
 import torch.nn.functional as F
+import numpy as np 
+import scipy.sparse as sp
+import pickle as pkl
+import networkx as nx
+
 
 LOG_DIR = './logs/'
 
 
-def get_savedir(dataset, model, init_g, gslearner, grid_search):
+def get_savedir(dataset, model, init_g, gsl, grid_search):
     """Get unique saving directory name."""
     dt = datetime.datetime.now()
     date = dt.strftime("%m_%d")
     gs = 'gs_' if grid_search else ''
     save_dir = os.path.join(LOG_DIR, date, dataset,
-                            gs + model + '_' + init_g + '+' + '+' + gslearner + '_' + dt.strftime('_%H_%M_%S'))
+                            gs + model + '_' + init_g + '+' + '+' + gsl + '_' + dt.strftime('_%H_%M_%S'))
     os.makedirs(save_dir)
     return save_dir
 
@@ -56,3 +60,41 @@ activations = {
     'tanh': torch.tanh,
     '': None
 }
+
+
+
+def sparse_to_tuple(sparse_mx):
+    if not sp.isspmatrix_coo(sparse_mx):
+        sparse_mx = sparse_mx.tocoo()
+    coords = np.vstack((sparse_mx.row, sparse_mx.col)).transpose()
+    values = sparse_mx.data
+    shape = sparse_mx.shape
+    return coords, values, shape
+
+
+# 处理adj
+def preprocess_graph(adj):
+    adj = sp.coo_matrix(adj)
+    adj_ = adj + sp.eye(adj.shape[0])
+    rowsum = np.array(adj_.sum(1))
+    degree_mat_inv_sqrt = sp.diags(np.power(rowsum, -0.5).flatten())
+    adj_normalized = adj_.dot(degree_mat_inv_sqrt).transpose().dot(degree_mat_inv_sqrt).tocoo()
+    # return sparse_to_tuple(adj_normalized)
+    return sparse_mx_to_torch_sparse_tensor(adj_normalized)
+
+
+def sparse_mx_to_torch_sparse_tensor(sparse_mx):
+    """Convert a scipy sparse matrix to a torch sparse tensor."""
+    sparse_mx = sparse_mx.tocoo().astype(np.float32)
+    indices = torch.from_numpy(
+        np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+    values = torch.from_numpy(sparse_mx.data)
+    shape = torch.Size(sparse_mx.shape)
+    return torch.sparse.FloatTensor(indices, values, shape)
+
+
+def add_new_item(dict, item, idx):
+    if not item in dict.keys():
+        dict[item] = []
+    dict[item].append(idx)
+

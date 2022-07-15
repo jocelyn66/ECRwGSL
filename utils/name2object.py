@@ -4,7 +4,8 @@ name2model = {
 }
 
 name2gsl = {
-    'gvae': 'GCNModelVAE'
+    'gvae': 'GCNModelVAE',
+    'gae': 'GCNModelAE'
 }
 
 name2init = {

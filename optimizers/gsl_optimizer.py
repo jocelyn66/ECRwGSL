@@ -11,7 +11,7 @@ from torch import nn
 class ECROptimizer(object):
 
     def __init__(self, model, optimizer, valid_freq, batch_size,
-                 regularizer=None, use_cuda=False, dropout=0.,):
+                 regularizer=None, use_cuda=False, dropout=0.):
         self.model = model
         self.regularizer = regularizer
         self.optimizer = optimizer
@@ -31,28 +31,6 @@ class ECROptimizer(object):
         if self.regularizer:
             loss += self.regularizer.forward(factors)
         return loss
-
-    def loss_function_gvae(preds, labels, mu, logvar, n_nodes, norm, pos_weight):
-        """GVAE"""
-        cost = norm * F.binary_cross_entropy_with_logits(preds, labels, pos_weight=pos_weight)
-
-        # see Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        KLD = -0.5 / n_nodes * torch.mean(torch.sum(
-            1 + 2 * logvar - mu.pow(2) - logvar.exp().pow(2), 1))
-        return cost + KLD
-
-    def loss_function_gae(preds, labels, mu, logvar, n_nodes, norm, pos_weight):
-        """GAE"""
-        cost = norm * F.binary_cross_entropy_with_logits(preds, labels, pos_weight=pos_weight)
-
-        # see Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        return cost
 
     def epoch(self, examples, target, mask):
 
@@ -79,7 +57,7 @@ class ECROptimizer(object):
         total_loss /= iter
         return total_loss
 
-    def evaluate(self, test_data, valid_losses=False):
+    def evaluate(self, test_data, valid_mode=False):
         pass
 
         valid_losses = []
@@ -94,4 +72,54 @@ class ECROptimizer(object):
             if valid_losses:
                 valid_loss = np.mean(valid_losses)
 
-            return valid_loss
+        return valid_loss
+
+
+class GAEOptimizer(object):
+    def __init__(self):
+        pass
+
+    def __init__(self, model, optimizer, adj_label, n_nodes, norm, pos_weight, valid_freq, use_cuda, dropout=0.):
+        self.model = model
+        self.optimizer = optimizer
+        self.loss_fn = self.loss_function_gvae if model.gsl_name=='gave' else self.loss_function_gae
+        # self.loss_fn = nn.CrossEntropyLoss(reduction='mean')
+        self.use_cuda = use_cuda
+        self.device = torch.device("cuda" if self.use_cuda else "cpu")
+        self.valid_freq = valid_freq
+        self.dropout = dropout
+        self.labels = adj_label
+        self.n_nodes = n_nodes
+        self.norm = norm
+        self.pos_weight = pos_weight
+
+    def loss_function_gvae(self, preds, mu, logvar):
+        """GVAE"""
+        cost = self.norm * F.binary_cross_entropy_with_logits(preds, self.labels, pos_weight=self.pos_weight)
+
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        KLD = -0.5 / self.n_nodes * torch.mean(torch.sum(
+            1 + 2 * logvar - mu.pow(2) - logvar.exp().pow(2), 1))
+        return cost + KLD
+
+    def loss_function_gae(self, preds, mu, logvar):
+        """GAE"""
+        cost = self.norm * F.binary_cross_entropy_with_logits(preds, self.labels, pos_weight=self.pos_weight)
+
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        return cost
+
+    def epoch(self):
+        recovered, mu, logvar = self.model()
+        loss = self.loss_fn(preds=recovered, mu=mu, logvar=logvar)
+        return loss, mu
+
+
+    def eval(self):
+        return 
