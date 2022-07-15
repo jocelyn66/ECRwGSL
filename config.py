@@ -5,7 +5,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", "--d", type=str, default="ecb+",
                     help="Knowledge Graph dataset")
 parser.add_argument("--dataset_root_path", type=str, default="../data/ECB+")
-parser.add_argument('--train_file', type=str, default='../data/ECB+/processed_ECB+/ECB_Train_processed_data.json')
+parser.add_argument('--train_file', type=str, default='./data/ECB+/processed_ECB+/ECB_Train_processed_data.json')
 parser.add_argument('--dev_file', type=str, default='../data/ECB+/processed_ECB+/ECB_Dev_processed_data.json')
 parser.add_argument('--test_file', type=str, default='../data/ECB+/processed_ECB+/ECB_Test_processed_data.json')
 parser.add_argument('--schema_path', type=str, default="../data/ECB+/processed_ECB+/ECB_schema.json")
@@ -30,7 +30,7 @@ parser.add_argument("--reg", default=0, type=float,
 
 parser.add_argument("--optimizer", choices=["Adagrad", "Adam"], default="Adam",
                     help="Optimizer")
-parser.add_argument("--max-epochs", default=200, type=int,
+parser.add_argument("--max-epochs", default=10, type=int,
                     help="Maximum number of epochs to train for")
 parser.add_argument("--patience", default=200, type=int,
                     help="Number of epochs before early stopping")
@@ -47,13 +47,14 @@ parser.add_argument('--weight_decay', type=float, default=1e-2)
 
 # configuration for optimal parameters
 parser.add_argument("--rand-search", "--rs", action='store_true',
-                    help="perform random search for best configuration")  # !
+                    help="perform random search for best configuration")
 # mdoel config
-parser.add_argument("--model", default="ecrwgsl",
+parser.add_argument("--model", default="ecr-gsl",
                     help="ECR models")
 parser.add_argument('--tokenizer_name', type=str, default='bert-base-uncased')
 parser.add_argument('--plm_name', type=str, default='bert-base-uncased')
-parser.add_argument('--feat_dim', type=int, default='size of features, i.e. bert embedding dim')
+parser.add_argument('--feat_dim', type=int, default=784, 
+                    help='size of features, i.e. bert embedding dim')
 # encoder config#####################
 parser.add_argument("--encoder", type=str, default='gae',
                     help="gsl model")
@@ -64,5 +65,6 @@ parser.add_argument("--n-layers", type=int, default=2,
 parser.add_argument('--hidden1', type=int, default=32, help='Number of units in hidden layer 1.')
 parser.add_argument('--hidden2', type=int, default=16, help='Number of units in hidden layer 2.')
 
-
+# decoder
+parser.add_argument("--decoder", type=str, default='')
 parser = parser.parse_args()

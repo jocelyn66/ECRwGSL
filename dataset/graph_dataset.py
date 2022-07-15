@@ -6,13 +6,12 @@ import numpy as np
 import json
 
 import numpy as np
-import scipy.sparse as sp
 from utils.train import add_new_item
 
 DATA_PATH = './data/'
 
 # np.random.seed(123)
-n_events = 3808  # {'Train': 3808,'Dev'}
+n_events = 3808  # {'Train': 3808,'Dev'：, 'Test': }
 n_entities = 4758
 
 
@@ -32,7 +31,7 @@ class GDataset(object):
         assert(self.n_entities > 0)
         self.n_nodes = self.n_events + self.n_entities
 
-        self.train_adjacency = self.get_adjacency(self, args.train_file)  # 对角线1
+        self.train_adjacency = self.get_adjacency(args.train_file)  # 对角线1
         self.event_coref_adj = self.get_event_coref_adj()  # 对角线不用
 
     def get_schema(self, path, split=''):
@@ -64,8 +63,10 @@ class GDataset(object):
             sent = json.loads(line)
             #  同一文档rand_rate的概率随机放点
             if last_doc_id != sent['sent_id']:
-                rand_rows = doc_node_idx[np.random.rand(len(doc_node_idx))+1<-rand_rate*2]
+                rand_rows = doc_node_idx[(np.random.rand(len(doc_node_idx))+1)/(-2) < rand_rate*2]
+                # rand_rows = doc_node_idx[(np.random.rand(len(doc_node_idx))+1) < (-rand_rate*2)]
                 rand_cols = doc_node_idx[np.random.rand(len(doc_node_idx))+1<rand_rate*2]
+
                 adj[rand_rows, rand_cols] = 1
                 last_doc_id = sent['sent_id']
                 doc_node_idx.clear()
@@ -87,10 +88,12 @@ class GDataset(object):
             doc_node_idx.append(sent_node_idx)
             sent_node_idx.clear()
 
-        # 处理adj
+        # 处理adj: 对称，对角线0
         adj = adj + adj.T
-        assert(adj.diagonal(offset=0, axis1=0, axis2=1).all()>0)
-        return adj>0      
+        adj = (adj>0)
+        adj[np.diag_indices_from(adj)] = 0
+        assert(adj.diagonal(offset=0, axis1=0, axis2=1).all()==0)
+        return adj
         
     def get_event_node_idx(self, descrip):
         return int(self.schema_event[descrip])

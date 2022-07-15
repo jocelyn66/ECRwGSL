@@ -4,20 +4,17 @@ import torch
 import torch.nn.functional as F
 import numpy as np 
 import scipy.sparse as sp
-import pickle as pkl
-import networkx as nx
-
 
 LOG_DIR = './logs/'
 
 
-def get_savedir(dataset, model, init_g, gsl, grid_search):
+def get_savedir(dataset, model, encoder, decoder, grid_search):
     """Get unique saving directory name."""
     dt = datetime.datetime.now()
     date = dt.strftime("%m_%d")
     gs = 'gs_' if grid_search else ''
     save_dir = os.path.join(LOG_DIR, date, dataset,
-                            gs + model + '_' + init_g + '+' + '+' + gsl + '_' + dt.strftime('_%H_%M_%S'))
+                            gs + model + '_' + encoder + '+' + decoder + dt.strftime('_%H_%M_%S'))
     os.makedirs(save_dir)
     return save_dir
 
@@ -60,7 +57,6 @@ activations = {
     'tanh': torch.tanh,
     '': None
 }
-
 
 
 def sparse_to_tuple(sparse_mx):

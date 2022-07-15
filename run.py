@@ -8,19 +8,19 @@ import torch.optim
 import math
 import numpy as np
 
-from dataset.graph_dataset import load_dataset
 import models
 import optimizers.regularizers as regularizers
-from optimizers import *
+from optimizers.ecr_optimizer import *
 from config import parser
 from utils.name2object import name2model
 from rs_hyperparameter import rs_tunes, rs_hp_range, rs_set_hp_func
 from utils.train import *
-from ECRwGSL.test import *
-import scipy.sparse as sp  # 稀疏矩阵
 from utils.evaluate import *
+from dataset.dataset_process import preprocess_function
+
 
 from dataset.graph_dataset import GDataset
+from datasets import load_dataset
 
 import transformers
 from transformers import (
@@ -29,12 +29,11 @@ from transformers import (
     BertTokenizer,
     BertModel
 )
-from models.dataset_process import preprocess_function
 import json
 
 
 def set_logger(args):
-    save_dir = get_savedir(args.dataset, args.model, args.init_g, args.updater, args.grid_search)
+    save_dir = get_savedir(args.dataset, args.model, args.encoder, args.decoder, args.rand_search)
     logging.basicConfig(
         format="%(asctime)s %(levelname)-8s %(message)s",
         level=logging.INFO,
@@ -59,13 +58,13 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     if args.rand_search:
         set_hp(args, hps)
 
-    if not (args.grid_search or args.rand_search):
+    if not args.rand_search:
         save_dir = set_logger(args)
         with open(os.path.join(save_dir, "config.json"), 'a') as fjson:
             json.dump(vars(args), fjson)
 
-    model_name = "model_d{}_l{}.pt".format(
-        args.rank, args.n_layers)
+    model_name = "model_feat-d{}_h1-d{}_h2-d{}.pt".format(
+        args.feat_dim, args.hidden1, args.hidden2)
     logging.info(args)
 
     if args.double_precision:
@@ -82,19 +81,12 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
     dataset = GDataset(args)
 
-    adj_orig, args.n_nodes, event_coref_adj = dataset.train_adjacency, dataset.n_nodes, dataset.event_coref_adj
+    adj_train, args.n_nodes, event_coref_adj = dataset.train_adjacency, dataset.n_nodes, dataset.event_coref_adj
 
-    # Store original adjacency matrix (without diagonal entries【0】) for later 
-    adj = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), shape=adj_orig.shape)
-    adj.eliminate_zeros()  # adj:对角线标签为0
-
-    # Some preprocessing
-    adj_norm = preprocess_graph(adj)
-    adj_label = adj + sp.eye(adj.shape[0])  # np.eye(n_nodes)
-    adj_label = torch.FloatTensor(adj_label.toarray())  # 对角线1
-
-    pos_weight = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
-    norm = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
+    # Some preprocessing:
+    adj_norm = preprocess_graph(adj_train)
+    pos_weight = float(adj_train.shape[0] * adj_train.shape[0] - adj_train.sum()) / adj_train.sum()
+    norm = adj_train.shape[0] * adj_train.shape[0] / float((adj_train.shape[0] * adj_train.shape[0] - adj_train.sum()) * 2)
 
     # bert################################
      #Load Datasets
@@ -161,7 +153,7 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     regularizer = None
     if args.regularizer:
         regularizer = getattr(regularizers, args.regularizer)(args.reg)
-    optimizer = GAEOptimizer(model, optim_method, adj_label, args.n_nodes, norm, pos_weight, args.valid_freq, use_cuda, args.dropout)
+    optimizer = GAEOptimizer(model, optim_method, args.n_nodes, norm, pos_weight, args.valid_freq, use_cuda, args.dropout)
 
     # start train######################################
     counter = 0
@@ -187,17 +179,17 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
         model.eval()
 
-        metrics = test_model(hidden_emb, adj_orig, dataset.event_idx)
+        metrics = test_model(hidden_emb, event_coref_adj, dataset.event_idx)
         logging.info(format_metrics(metrics, 'Trian'))
         logging.info("time=", "{:.5f}".format(time.time() - t))
 
         # val#####################################
 
-        # 无监督
-        valid_loss, mu = optimizer.eval()
-        hidden_emb = mu.data.numpy()
-        metrics = test_model(hidden_emb, adj_orig['Valid'], dataset.event_idx['Valid'])
-        logging.info("\t Epoch {} | average valid loss: {:.4f}".format(epoch, valid_loss))
+        # # 无监督
+        # dev_loss, mu = optimizer.eval()
+        # hidden_emb = mu.data.numpy()
+        # metrics = test_model(hidden_emb, adj_dev['Dev'], dataset.event_idx['Dev'])
+        # logging.info("\t Epoch {} | average valid loss: {:.4f}".format(epoch, dev_loss))
 
         # # 有监督
         # model.eval()

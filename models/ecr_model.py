@@ -1,7 +1,7 @@
 from pkgutil import get_data
 import torch
 import torch.nn as nn
-import gsl
+from  models.gsl import *
 from utils.name2object import name2gsl, name2init
 from initializer import *
 
@@ -19,7 +19,7 @@ class ECRModel(nn.Module):
         self.event_schema = schema_list[1]
         self.entity_schema = schema_list[2]
 
-        self.gsl = getattr(gsl, name2gsl[args.gsl])(args.rank, args.rank, args.rank, args.dropout)
+        self.gsl = getattr(gsl, name2gsl[args.gsl])(args.feat_dim, args.hidden1, args.hidden2, args.dropout)
         self.gsl_name = args.gsl_name
         self.adj = adj  # norm
         self.n_nodes = args.n_nodes

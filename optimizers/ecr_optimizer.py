@@ -33,6 +33,7 @@ class ECROptimizer(object):
         return loss
 
     def epoch(self, examples, target, mask):
+        # batch gd
 
         actual_examples = examples[torch.randperm(examples.shape[0]), :]
         with tqdm(total=examples.shape[0], unit='ex', disable=not self.verbose) as bar:
@@ -79,7 +80,7 @@ class GAEOptimizer(object):
     def __init__(self):
         pass
 
-    def __init__(self, model, optimizer, adj_label, n_nodes, norm, pos_weight, valid_freq, use_cuda, dropout=0.):
+    def __init__(self, model, optimizer, n_nodes, norm, pos_weight, valid_freq, use_cuda, dropout=0.):
         self.model = model
         self.optimizer = optimizer
         self.loss_fn = self.loss_function_gvae if model.gsl_name=='gave' else self.loss_function_gae
@@ -88,7 +89,6 @@ class GAEOptimizer(object):
         self.device = torch.device("cuda" if self.use_cuda else "cpu")
         self.valid_freq = valid_freq
         self.dropout = dropout
-        self.labels = adj_label
         self.n_nodes = n_nodes
         self.norm = norm
         self.pos_weight = pos_weight
@@ -116,10 +116,19 @@ class GAEOptimizer(object):
         return cost
 
     def epoch(self):
+        
         recovered, mu, logvar = self.model()
+
         loss = self.loss_fn(preds=recovered, mu=mu, logvar=logvar)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
         return loss, mu
 
 
     def eval(self):
-        return 
+        with torch.no_grad():
+            recovered, mu, logvar = self.model()
+            loss = self.loss_fn(preds=recovered, mu=mu, logvar=logvar)
+        return loss, mu
