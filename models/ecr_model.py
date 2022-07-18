@@ -1,9 +1,10 @@
-from pkgutil import get_data
+from json import encoder
+from turtle import shape
 import torch
 import torch.nn as nn
-from  models.gsl import *
 from utils.name2object import name2gsl, name2init
-from initializer import *
+import models.gsl as gsls
+import tqdm
 
 
 class ECRModel(nn.Module):
@@ -19,30 +20,52 @@ class ECRModel(nn.Module):
         self.event_schema = schema_list[1]
         self.entity_schema = schema_list[2]
 
-        self.gsl = getattr(gsl, name2gsl[args.gsl])(args.feat_dim, args.hidden1, args.hidden2, args.dropout)
-        self.gsl_name = args.gsl_name
+        self.gsl = getattr(gsls, name2gsl[args.encoder])(args.feat_dim, args.hidden1, args.hidden2, args.dropout)
+        self.gsl_name = args.encoder
         self.adj = adj  # norm
-        self.n_nodes = args.n_nodes
+        self.device = args.device
 
     def forward(self):
         # features: (feat_dim, n_nodes)
-        
-        features = torch.tensor() 
-        # torch stack
+        # 待优化: 高维张量
+        features = []  # ts list
+
+        # 遍历句子构造句子子图, 同时记录句子文档id
         for _, sent in enumerate(self.train_dataset):
-            encoder_output = self.bert_encoder(sent['input_ids'])
-            encoder_hidden_state = encoder_output['last_hidden_state']  # (feat_dim, n_tokens)
-            # []
-            mask = torch.tensor()
-            sent_mask = torch.tensor(sent['input_mask'])
+            # print("#sent", _)
+            input_ids = torch.tensor(sent['input_ids'], device=self.device).reshape(1, -1)
+            encoder_output = self.bert_encoder(input_ids)
+            # print("#####input_ids", input_ids.shape)
+            encoder_hidden_state = encoder_output['last_hidden_state']  # (n_sent, n_tokens, feat_dim)
+
+            masks = []
+            # token_masks = torch.tensor(sent['input_mask'])
+            token_masks = torch.eye(input_ids.shape[1], device=self.device)
+            # print("#####tokens", token_masks.shape)
+            
+            # m, n = token_masks.shape
+            # if m!=n:
+            #     print(m, n)
+            #     print("#####token_masks", token_masks)
 
             for _, event in enumerate(sent['output_event']):
-                this_mask = torch.mean(sent_mask[event['tokens_number']].sum(dim=0), keepdim=True)
-                mask = torch.cat((mask, this_mask), dim=0)  # dim=0 1?
+                this_mask = token_masks[event['tokens_number']]
+                # print("####1", this_mask.shape)
+                this_mask = torch.mean(this_mask, dim=0, keepdim=True)
+                # print("#####2", this_mask.shape)
+                masks.append(this_mask)
             for _,entity in enumerate(sent['output_entity']):
-                this_mask = torch.mean(sent_mask[entity['tokens_number']].sum(dim=0), keepdim=True)
-                mask = torch.cat((mask, this_mask), dim=0)
-            features = torch.cat((features, mask * encoder_hidden_state), dim=0)    #dim=0 1?encoder_hidden_state * input_mask = 所求表征
+                this_mask = torch.mean(token_masks[entity['tokens_number']], dim=0, keepdim=True)
+                masks.append(this_mask)
+                
+            masks = torch.cat(masks, dim=0).cuda()
+            # print("#size", masks.shape, encoder_hidden_state.shape)
+            # masks = torch.unsqueeze(masks, dim=0)
+            encoder_hidden_state = encoder_hidden_state.squeeze()
+            # print("#size2", masks.shape, encoder_hidden_state.shape)
+            
+            features.append(masks @ encoder_hidden_state)
 
+        features = torch.cat(features)    #dim=0 1? encoder_hidden_state * input_mask = 所求表征
         return self.gsl(features, self.adj)  # gae, only encoder
     

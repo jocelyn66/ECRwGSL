@@ -1,6 +1,5 @@
 import torch.nn as nn
 from layers.gsl_layer import *
-from torch_geometric.nn import GATConv, GCNConv
 
 
 # GVAE
@@ -27,13 +26,13 @@ class GCNModelVAE(nn.Module):
     def forward(self, x, adj):
         mu, logvar = self.encode(x, adj)
         z = self.reparameterize(mu, logvar)
-        return self.dc(z)
+        return self.dc(z), mu, logvar
 
 
 # GAE
 class GCNModelAE(nn.Module):
     def __init__(self, input_feat_dim, hidden_dim1, hidden_dim2, dropout):
-        super(GCNModelVAE, self).__init__()
+        super(GCNModelAE, self).__init__()
         self.gc1 = GraphConvolution(input_feat_dim, hidden_dim1, dropout, act=F.relu)
         self.gc2 = GraphConvolution(hidden_dim1, hidden_dim2, dropout, act=lambda x: x)
         self.dc = InnerProductDecoder(dropout, act=lambda x: x)
@@ -44,7 +43,7 @@ class GCNModelAE(nn.Module):
 
     def forward(self, x, adj):
         z = self.encode(x, adj)
-        return self.dc(z)
+        return self.dc(z), z, None
 
 
 class InnerProductDecoder(nn.Module):

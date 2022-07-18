@@ -8,7 +8,7 @@ import torch.optim
 import math
 import numpy as np
 
-import models
+import models.ecr_model
 import optimizers.regularizers as regularizers
 from optimizers.ecr_optimizer import *
 from config import parser
@@ -69,6 +69,7 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
     if args.double_precision:
         torch.set_default_dtype(torch.float64)
+        print("####double precision")
 
     # load data############################处理成图
     # dataset = load_dataset(args.dataset)
@@ -81,11 +82,12 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
     dataset = GDataset(args)
 
-    adj_train, args.n_nodes, event_coref_adj = dataset.train_adjacency, dataset.n_nodes, dataset.event_coref_adj
+    adj_train, args.n_nodes, event_coref_adj = dataset.adjacency['Train'], dataset.n_nodes, dataset.event_coref_adj['Train']
+    # adj_dev, adj_test, event_coref_adj_dev, event_coref_adj_test = dataset.adjacency['Dev'], dataset.adjacency['Test'], dataset.event_coref_adj['Dev'], dataset.event_coref_adj['Test']    
 
     # Some preprocessing:
-    adj_norm = preprocess_graph(adj_train)
-    pos_weight = float(adj_train.shape[0] * adj_train.shape[0] - adj_train.sum()) / adj_train.sum()
+    adj_norm = preprocess_adjacency(adj_train)
+    pos_weight = float(adj_train.shape[0] * adj_train.shape[0] - adj_train.sum()) / adj_train.sum()  # ?
     norm = adj_train.shape[0] * adj_train.shape[0] / float((adj_train.shape[0] * adj_train.shape[0] - adj_train.sum()) * 2)
 
     # bert################################
@@ -144,6 +146,9 @@ def train(args, hps=None, set_hp=None, save_dir=None):
         ValueError("WARNING: CUDA is not available!")
     args.device = torch.device("cuda" if use_cuda else "cpu")
 
+    adj_train = torch.tensor(adj_train, device=args.device)
+    adj_norm = torch.tensor(adj_norm, device=args.device)
+
     model = getattr(models, name2model[args.model])(args, train_dataset, tokenizer, plm, schema_list, adj_norm)
     total = count_params(model)
     logging.info("Total number of parameters {}".format(total))
@@ -169,24 +174,24 @@ def train(args, hps=None, set_hp=None, save_dir=None):
             if hasattr(torch.cuda, 'empty_cache'):
                 torch.cuda.empty_cache()
 
-        loss, mu = optimizer.epoch()
+        loss, mu = optimizer.epoch(adj_train)
         logging.info("\t Epoch {} | average train loss: {:.4f}".format(epoch, loss))
         if math.isnan(loss.item()):
             break
 
         # valid training set
-        hidden_emb = mu.data.numpy()
+        hidden_emb = mu.data.detach().cpu().numpy()
 
         model.eval()
 
         metrics = test_model(hidden_emb, event_coref_adj, dataset.event_idx)
         logging.info(format_metrics(metrics, 'Trian'))
-        logging.info("time=", "{:.5f}".format(time.time() - t))
+        logging.info("time={:.5f}".format(time.time() - t))
 
         # val#####################################
 
         # # 无监督
-        # dev_loss, mu = optimizer.eval()
+        # dev_loss, mu = optimizer.eval(adj_dev)
         # hidden_emb = mu.data.numpy()
         # metrics = test_model(hidden_emb, adj_dev['Dev'], dataset.event_idx['Dev'])
         # logging.info("\t Epoch {} | average valid loss: {:.4f}".format(epoch, dev_loss))
@@ -220,7 +225,7 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
     logging.info("\t ---------------------------Optimization finished---------------------------")
 
-    # test#########################
+    # # test#########################
     # if not best_f1:
     #     best_model_path = os.path.join(save_dir, model_name)
     #     torch.save(model.cpu().state_dict(), best_model_path)
@@ -232,6 +237,8 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     # model.eval()  # no BatchNormalization Dropout
 
     # # Test metrics
+
+    # 测评
     # logging.info("Evaluation Test Set:")
     # test_f1 = None
     # conll_f1 = run_conll_scorer(args.output_dir)

@@ -1,10 +1,11 @@
+from cProfile import label
 import numpy as np
-from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, precision_score, recall_score
+from sklearn.metrics import label_ranking_loss, roc_auc_score, average_precision_score, f1_score, precision_score, recall_score
 
 
 def format_metrics(metrics, split):
     # f_score, roc_score, ap_score, p, r
-    str = '{}set: F1={:.5f}, ROC={:.5f}, AP={:.5f}, P={:.5f}, R={:.5f}'.format(split, metrics[0], metrics[1], metrics[2], metrics[3], metrics[4])
+    str = '{} set: AUC={:.5f}, AP={:.5f}'.format(split, metrics[0], metrics[1])
     return str
 
 
@@ -57,23 +58,26 @@ def get_bcubed(labels, preds):
 
 
 def test_model(emb, target_adj, event_idx):
+    # target_adj: bool?
 
     # 根据共指关系计算AUC等
     # 大矩阵: embedding, 共指关系矩阵
     # event mention在大矩阵中的下标,用于提取正负例,方法 取上三角矩阵(不含对角线)
     # extract event mentions(trigger)
-    event_emb = emb[event_idx]
-    target_event_adj = target_adj[event_idx]
+
+    event_emb = emb[event_idx, :]
+    target_event_adj = target_adj[event_idx, :][:, event_idx]
 
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))
 
     # Predict on test set of edges
-    pred_event_adj = sigmoid(np.dot(emb, emb.T))
+    pred_event_adj = sigmoid(np.dot(event_emb, event_emb.T))
 
-    mask = np.triu_indices(len(event_idx), len(event_idx)-1)  # flatten(), 上三角元素的下标
-    preds = pred_event_adj.flatten()[mask]
-    target = target_event_adj.flatten()[mask].int()
+    mask = np.triu_indices(len(event_idx), 1)  # 上三角元素的下标
+    preds = pred_event_adj[mask]
+    target = target_event_adj[mask]
+
     preds_true = preds[target==1]
     preds_false = preds[target==0]
 
@@ -81,9 +85,9 @@ def test_model(emb, target_adj, event_idx):
     labels_all = np.hstack([np.ones(len(preds_true)), np.zeros(len(preds_false))])
 
     # 计算metrics
-    roc_score = roc_auc_score(labels_all, preds_all)
+    auc_score = roc_auc_score(labels_all, preds_all)
     ap_score = average_precision_score(labels_all, preds_all)
-    f_score = get_bcubed(labels_all, preds_all)
-    p = precision_score(labels_all, preds_all)
-    r = recall_score(labels_all, preds_all) 
-    return f_score, roc_score, ap_score, p, r
+    # f_score = get_bcubed(labels_all, preds_all>threshold)
+    # p = precision_score(labels_all, preds_all>threshold)
+    # r = recall_score(labels_all, preds_all>threshold) 
+    return auc_score, ap_score

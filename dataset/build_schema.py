@@ -16,7 +16,7 @@ doc_idx = 1
 event_idx = 1
 entity_idx = 1
 
-for name in ['Test']:
+for name in ['Test']:  # ['Train', 'Dev', 'Test]
     print(name)
     data_path = root_path + "ECB_{}_processed_data.json".format(name)
     with open(data_path, 'r') as f:

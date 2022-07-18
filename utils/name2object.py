@@ -1,6 +1,5 @@
-
 name2model = {
-    'ecr': 'ECR'
+    'ecr-gsl': 'ECRModel'
 }
 
 name2gsl = {

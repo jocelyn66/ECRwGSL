@@ -1,25 +1,26 @@
 import argparse
+from email.policy import default
 
 # data configuration#####################
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", "--d", type=str, default="ecb+",
                     help="Knowledge Graph dataset")
-parser.add_argument("--dataset_root_path", type=str, default="../data/ECB+")
+parser.add_argument("--dataset_root_path", type=str, default="./data/ECB+")
 parser.add_argument('--train_file', type=str, default='./data/ECB+/processed_ECB+/ECB_Train_processed_data.json')
-parser.add_argument('--dev_file', type=str, default='../data/ECB+/processed_ECB+/ECB_Dev_processed_data.json')
-parser.add_argument('--test_file', type=str, default='../data/ECB+/processed_ECB+/ECB_Test_processed_data.json')
-parser.add_argument('--schema_path', type=str, default="../data/ECB+/processed_ECB+/ECB_schema.json")
+parser.add_argument('--dev_file', type=str, default='./data/ECB+/processed_ECB+/ECB_Dev_processed_data.json')
+parser.add_argument('--test_file', type=str, default='./data/ECB+/processed_ECB+/ECB_Test_processed_data.json')
+parser.add_argument('--schema_path', type=str, default="./data/ECB+/processed_ECB+/ECB_schema.json")
 parser.add_argument('--ckp_dir', type=str, default=None)
-parser.add_argument('--train_cache_file', type=str, default='../data/ECB+/dataset_cache/ECB_train.arrow')
-parser.add_argument('--dev_cache_file', type=str, default='../data/ECB+/dataset_cache/ECB_dev.arrow')
-parser.add_argument('--test_cache_file', type=str, default='../data/ECB+/dataset_cache/ECB_test.arrow')
+parser.add_argument('--train_cache_file', type=str, default='./data/ECB+/dataset_cache/ECB_train.arrow')
+parser.add_argument('--dev_cache_file', type=str, default='./data/ECB+/dataset_cache/ECB_dev.arrow')
+parser.add_argument('--test_cache_file', type=str, default='./data/ECB+/dataset_cache/ECB_test.arrow')
 parser.add_argument('--log_dir', type=str, default=None)              
 
 parser.add_argument("--gpu", type=int, default=0,
                     help="gpu")
 parser.add_argument("--debug", action="store_true",
                     help="Only use 1000 examples for debugging")
-parser.add_argument("--double-precision", action="store_true",
+parser.add_argument("--double-precision", action="store_true",default=True,
                     help="Machine precision")
 
 # training configuration###############
@@ -53,10 +54,11 @@ parser.add_argument("--model", default="ecr-gsl",
                     help="ECR models")
 parser.add_argument('--tokenizer_name', type=str, default='bert-base-uncased')
 parser.add_argument('--plm_name', type=str, default='bert-base-uncased')
-parser.add_argument('--feat_dim', type=int, default=784, 
+parser.add_argument('--feat_dim', type=int, default=768, 
                     help='size of features, i.e. bert embedding dim')
 # encoder config#####################
-parser.add_argument("--encoder", type=str, default='gae',
+parser.add_argument('--rand_node_rate', type=int, default=0.2)
+parser.add_argument("--encoder", type=str, choices = ['gae', 'gvae'], default='gae',
                     help="gsl model")
 parser.add_argument("--dropout", "--en-dropout", type=float, default=0.,
                     help="dropout probability")

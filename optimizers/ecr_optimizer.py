@@ -1,3 +1,4 @@
+from turtle import pos
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -89,13 +90,15 @@ class GAEOptimizer(object):
         self.device = torch.device("cuda" if self.use_cuda else "cpu")
         self.valid_freq = valid_freq
         self.dropout = dropout
-        self.n_nodes = n_nodes
+        self.n_nodes = n_nodes['Train']
+        self.n_nodes_dev = n_nodes['Dev']
         self.norm = norm
-        self.pos_weight = pos_weight
+        # self.norm = torch.tensor([norm])
+        self.pos_weight = torch.tensor([pos_weight], device=self.device, requires_grad=False)
 
-    def loss_function_gvae(self, preds, mu, logvar):
+    def loss_function_gvae(self, preds, orig, mu, logvar):
         """GVAE"""
-        cost = self.norm * F.binary_cross_entropy_with_logits(preds, self.labels, pos_weight=self.pos_weight)
+        cost = self.norm * F.binary_cross_entropy_with_logits(preds, orig, pos_weight=self.pos_weight)
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -105,9 +108,10 @@ class GAEOptimizer(object):
             1 + 2 * logvar - mu.pow(2) - logvar.exp().pow(2), 1))
         return cost + KLD
 
-    def loss_function_gae(self, preds, mu, logvar):
+    def loss_function_gae(self, preds, orig, mu, logvar):
         """GAE"""
-        cost = self.norm * F.binary_cross_entropy_with_logits(preds, self.labels, pos_weight=self.pos_weight)
+
+        cost = self.norm * F.binary_cross_entropy_with_logits(preds, orig, pos_weight=self.pos_weight)
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -115,11 +119,11 @@ class GAEOptimizer(object):
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
         return cost
 
-    def epoch(self):
+    def epoch(self, orig):
         
         recovered, mu, logvar = self.model()
 
-        loss = self.loss_fn(preds=recovered, mu=mu, logvar=logvar)
+        loss = self.loss_fn(preds=recovered, orig=orig, mu=mu, logvar=logvar)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -127,8 +131,10 @@ class GAEOptimizer(object):
         return loss, mu
 
 
-    def eval(self):
+    def eval(self, orig):
+
         with torch.no_grad():
             recovered, mu, logvar = self.model()
-            loss = self.loss_fn(preds=recovered, mu=mu, logvar=logvar)
+            loss = self.loss_fn(preds=recovered, orig=orig, mu=mu, logvar=logvar)
+
         return loss, mu
