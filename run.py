@@ -51,7 +51,7 @@ def set_logger(args):
     return save_dir
 
 
-def train(args, hps=None, set_hp=None, save_dir=None):
+def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
 
     start_model = datetime.datetime.now()
     torch.manual_seed(2022)
@@ -210,7 +210,7 @@ def train(args, hps=None, set_hp=None, save_dir=None):
         for split in ['Dev', 'Test']:
             test_loss, test_mu = optimizer.eval(datasets[split], adj_norm[split], dataset.adjacency[split], split)  # norm adj
             losses[split].append(test_loss)
-            logging.info("average {} loss: {:.4f}".format(epoch, split, test_loss))
+            logging.info("\taverage {} loss: {:.4f}".format(split, test_loss))
 
             test_hidden_emb = test_mu.data.detach().cpu().numpy()
             test_metrics = test_model(test_hidden_emb, dataset.event_coref_adj[split], dataset.event_idx[split])
@@ -265,7 +265,7 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     # conll_f1 = run_conll_scorer(args.output_dir)
     # logging.info(conll_f1)
 
-    # plot(, losses['Train'], losses['Dev'], losses['Test'])
+    plot(save_dir, losses['Train'], losses['Dev'], losses['Test'], num)
 
     end_model = datetime.datetime.now()
     logging.info('this model runtime: %s' % str(end_model - start_model))
@@ -305,7 +305,7 @@ def rand_search(args):
         logging.info('* Hyperparameter Set {}:'.format(i))
         logging.info(hp_values)
 
-        test_metrics = train(args, hp_values, rs_set_hp_func, save_dir)
+        test_metrics = train(args, hp_values, rs_set_hp_func, save_dir, i)
         logging.info('{} done'.format(grid_entry))
     #     if test_metrics['F'] > best_f1:
     #         best_f1 = test_metrics['F']
