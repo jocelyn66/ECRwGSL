@@ -16,6 +16,7 @@ from utils.name2object import name2model
 from rs_hyperparameter import rs_tunes, rs_hp_range, rs_set_hp_func
 from utils.train import *
 from utils.evaluate import *
+from utils.visual import *
 from dataset.dataset_process import preprocess_function
 
 
@@ -82,13 +83,18 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
     dataset = GDataset(args)
 
-    adj_train, args.n_nodes, event_coref_adj = dataset.adjacency['Train'], dataset.n_nodes, dataset.event_coref_adj['Train']
-    # adj_dev, adj_test, event_coref_adj_dev, event_coref_adj_test = dataset.adjacency['Dev'], dataset.adjacency['Test'], dataset.event_coref_adj['Dev'], dataset.event_coref_adj['Test']    
+    args.n_nodes = dataset.n_nodes
 
     # Some preprocessing:
-    adj_norm = preprocess_adjacency(adj_train)
-    pos_weight = float(adj_train.shape[0] * adj_train.shape[0] - adj_train.sum()) / adj_train.sum()  # ?
-    norm = adj_train.shape[0] * adj_train.shape[0] / float((adj_train.shape[0] * adj_train.shape[0] - adj_train.sum()) * 2)
+    # adj_norm = preprocess_adjacency(adj_train)
+    pos_weight = {}
+    norm = {}
+    adj_norm = {}
+    for split in ['Train', 'Dev', 'Test']:
+        adj = dataset.adjacency[split]
+        adj_norm[split] = preprocess_adjacency(dataset.adjacency[split])
+        pos_weight[split] = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
+        norm[split] = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
 
     # bert################################
      #Load Datasets
@@ -138,6 +144,8 @@ def train(args, hps=None, set_hp=None, save_dir=None):
         fn_kwargs={'tokenizer':tokenizer, 'args':args, 'schema_list':schema_list, 'plm':plm},
         cache_file_name = args.test_cache_file
     )
+
+    datasets = {'Dev':dev_dataset, 'Test':test_dataset}
     ######################
 
     # create 
@@ -146,10 +154,15 @@ def train(args, hps=None, set_hp=None, save_dir=None):
         ValueError("WARNING: CUDA is not available!")
     args.device = torch.device("cuda" if use_cuda else "cpu")
 
-    adj_train = torch.tensor(adj_train, device=args.device)
-    adj_norm = torch.tensor(adj_norm, device=args.device)
+    # adj_train = torch.tensor(adj_train, device=args.device)
+    # adj_norm = torch.tensor(adj_norm, device=args.device)
+    # adj_orig = {}
+    for split in ['Train', 'Dev', 'Test']:
+        # adj_norm[split] = torch.tensor(adj_norm[split], device=args.device)
+        # adj_orig[split] = torch.tensor(dataset.adjacency[split], device=args.device)
+        pos_weight[split] = torch.tensor(pos_weight[split], device=args.device)
 
-    model = getattr(models, name2model[args.model])(args, train_dataset, tokenizer, plm, schema_list, adj_norm)
+    model = getattr(models, name2model[args.model])(args, tokenizer, plm, schema_list)
     total = count_params(model)
     logging.info("Total number of parameters {}".format(total))
     model.to(args.device)    # GUP
@@ -158,7 +171,7 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     regularizer = None
     if args.regularizer:
         regularizer = getattr(regularizers, args.regularizer)(args.reg)
-    optimizer = GAEOptimizer(model, optim_method, args.n_nodes, norm, pos_weight, args.valid_freq, use_cuda, args.dropout)
+    optimizer = GAEOptimizer(model, optim_method, args.n_nodes, norm, pos_weight, args.valid_freq, use_cuda)
 
     # start train######################################
     counter = 0
@@ -166,6 +179,8 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     best_epoch = None
     best_model_path = ''
     hidden_emb = None
+    losses = {'Train': [], 'Dev': [], 'Test': []}
+
     logging.info("\t ---------------------------Start Optimization-------------------------------")
     for epoch in range(args.max_epochs):
         t = time.time()
@@ -174,9 +189,10 @@ def train(args, hps=None, set_hp=None, save_dir=None):
             if hasattr(torch.cuda, 'empty_cache'):
                 torch.cuda.empty_cache()
 
-        loss, mu = optimizer.epoch(adj_train)
-        logging.info("\t Epoch {} | average train loss: {:.4f}".format(epoch, loss))
-        if math.isnan(loss.item()):
+        loss, mu = optimizer.epoch(train_dataset, adj_norm['Train'], dataset.adjacency['Train'])
+        losses['Train'].append(loss)
+        logging.info("Epoch {} | average train loss: {:.4f}".format(epoch, loss))
+        if math.isnan(loss):
             break
 
         # valid training set
@@ -184,17 +200,22 @@ def train(args, hps=None, set_hp=None, save_dir=None):
 
         model.eval()
 
-        metrics = test_model(hidden_emb, event_coref_adj, dataset.event_idx)
+        metrics = test_model(hidden_emb, dataset.event_coref_adj['Train'], dataset.event_idx['Train'])
         logging.info(format_metrics(metrics, 'Trian'))
-        logging.info("time={:.5f}".format(time.time() - t))
+        logging.info("\ttime={:.5f}".format(time.time() - t))
 
         # val#####################################
 
-        # # 无监督
-        # dev_loss, mu = optimizer.eval(adj_dev)
-        # hidden_emb = mu.data.numpy()
-        # metrics = test_model(hidden_emb, adj_dev['Dev'], dataset.event_idx['Dev'])
-        # logging.info("\t Epoch {} | average valid loss: {:.4f}".format(epoch, dev_loss))
+        # 无监督
+        for split in ['Dev', 'Test']:
+            test_loss, test_mu = optimizer.eval(datasets[split], adj_norm[split], dataset.adjacency[split], split)  # norm adj
+            losses[split].append(test_loss)
+            logging.info("average {} loss: {:.4f}".format(epoch, split, test_loss))
+
+            test_hidden_emb = test_mu.data.detach().cpu().numpy()
+            test_metrics = test_model(test_hidden_emb, dataset.event_coref_adj[split], dataset.event_idx[split])
+            
+            logging.info(format_metrics(test_metrics, split))
 
         # # 有监督
         # model.eval()
@@ -244,10 +265,12 @@ def train(args, hps=None, set_hp=None, save_dir=None):
     # conll_f1 = run_conll_scorer(args.output_dir)
     # logging.info(conll_f1)
 
+    # plot(, losses['Train'], losses['Dev'], losses['Test'])
+
     end_model = datetime.datetime.now()
     logging.info('this model runtime: %s' % str(end_model - start_model))
     logging.info("\t ---------------------------done---------------------------")
-    return best_f1
+    return None
 
 
 def rand_search(args):
@@ -284,11 +307,11 @@ def rand_search(args):
 
         test_metrics = train(args, hp_values, rs_set_hp_func, save_dir)
         logging.info('{} done'.format(grid_entry))
-        if test_metrics['F'] > best_f1:
-            best_f1 = test_metrics['F']
-            best_f1s.append(best_f1)
-            best_hps.append(grid_entry)
-    logging.info("best hyperparameters: {}".format(best_hps))
+    #     if test_metrics['F'] > best_f1:
+    #         best_f1 = test_metrics['F']
+    #         best_f1s.append(best_f1)
+    #         best_hps.append(grid_entry)
+    # logging.info("best hyperparameters: {}".format(best_hps))
 
 
 if __name__ == "__main__":

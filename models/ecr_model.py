@@ -1,3 +1,4 @@
+from cgi import test
 from json import encoder
 from turtle import shape
 import torch
@@ -9,11 +10,10 @@ import tqdm
 
 class ECRModel(nn.Module):
 
-    def __init__(self, args,  train_dataset, tokenizer, plm_model, schema_list, adj):
+    def __init__(self, args, tokenizer, plm_model, schema_list):
         super(ECRModel, self).__init__()
 
         # bert
-        self.train_dataset = train_dataset
         self.tokenizer = tokenizer
         self.bert_encoder = plm_model
         self.doc_schema = schema_list[0]
@@ -22,16 +22,16 @@ class ECRModel(nn.Module):
 
         self.gsl = getattr(gsls, name2gsl[args.encoder])(args.feat_dim, args.hidden1, args.hidden2, args.dropout)
         self.gsl_name = args.encoder
-        self.adj = adj  # norm
         self.device = args.device
 
-    def forward(self):
+    def forward(self, dataset, adj):
         # features: (feat_dim, n_nodes)
+        # normalized adj
         # 待优化: 高维张量
         features = []  # ts list
 
         # 遍历句子构造句子子图, 同时记录句子文档id
-        for _, sent in enumerate(self.train_dataset):
+        for _, sent in enumerate(dataset):
             # print("#sent", _)
             input_ids = torch.tensor(sent['input_ids'], device=self.device).reshape(1, -1)
             encoder_output = self.bert_encoder(input_ids)
@@ -67,5 +67,5 @@ class ECRModel(nn.Module):
             features.append(masks @ encoder_hidden_state)
 
         features = torch.cat(features)    #dim=0 1? encoder_hidden_state * input_mask = 所求表征
-        return self.gsl(features, self.adj)  # gae, only encoder
+        return self.gsl(features, adj)  # gae, only encoder
     

@@ -23,12 +23,12 @@ class GDataset(object):
     def __init__(self, args):
 
         self.name = args.dataset
-        self.data = {}
-        self.event_idx = []
-        self.node = {}
-        self.event_chain_dict = {}  # train, dev, test
-        self.adjacency = {}
-        self.event_coref_adj = {}
+        # self.data = {}  # 
+        self.event_idx = {'Train':[], 'Dev':[], 'Test':[]}
+        # self.node = {}
+        self.event_chain_dict = {'Train':{}, 'Dev':{}, 'Test':{}}  # train, dev, test
+        self.adjacency = {}  # 邻接矩阵
+        self.event_coref_adj = {}  # 是event mention(trigger)，且共指关系成立，则为1.
         self.n_nodes = {}
         
         self.rand_node_rate = args.rand_node_rate
@@ -40,13 +40,14 @@ class GDataset(object):
             assert(self.n_entities[split] > 0)
             self.n_nodes[split] = self.n_events[split] + self.n_entities[split]
 
-        self.adjacency['Train'] = self.get_adjacency(args.train_file, 'Train')  # 0. 1.矩阵, 对角线1
-        self.adjacency['Dev'] = self.get_adjacency(args.dev_file, 'Dev')
-        self.adjacency['Test'] = self.get_adjacency(args.test_file, 'Test')
-
-        self.event_coref_adj['Train'] = self.get_event_coref_adj('Train')
-        # for split in ['Train', 'Dev', 'Test']:
-        #     self.event_coref_adj[split] = self.get_event_coref_adj(split)  # bool矩阵, 对角线无用
+        # self.adjacency['Train'] = self.get_adjacency(args.train_file, 'Train')  # 0. 1.矩阵, 对角线1
+        # self.adjacency['Dev'] = self.get_adjacency(args.dev_file, 'Dev')
+        # self.adjacency['Test'] = self.get_adjacency(args.test_file, 'Test')
+        file = {'Train': args.train_file, 'Dev': args.dev_file,'Test': args.test_file}
+        # self.event_coref_adj['Train'] = self.get_event_coref_adj('Train')
+        for split in ['Train', 'Dev', 'Test']:
+            self.adjacency[split] = self.get_adjacency(file[split], split)
+            self.event_coref_adj[split] = self.get_event_coref_adj(split)  # bool矩阵, 对角线无用
 
     def get_schema(self, path, split=''):
         # chain的schema, item：(chain descrip, id)
@@ -70,7 +71,7 @@ class GDataset(object):
         cur_idx = -1    # 从0开始顺序处理每个句子，对event chain, entity chain中的mention编号，根据mention出现的顺序
         
         with open(path, 'r') as f:
-            lines = f.readlines() 
+            lines = f.readlines()
 
         for _, line in enumerate(lines):
 
@@ -79,7 +80,7 @@ class GDataset(object):
 
             if last_doc_id != sent['doc_id']:
                 if doc_node_idx:
-                    # rand_rows = np.random.shuffle(doc_node_idx)[:num]
+                    # rand_rows = np.random.shuffle(doc_node_idx)[:int(num*rand_node_rate)]
                     rows_idx = np.random.rand(len(doc_node_idx)) < sqrt(self.rand_node_rate)
                     cols_idx = np.random.rand(len(doc_node_idx)) < sqrt(self.rand_node_rate)
                     if (rows_idx & cols_idx).any is True:
@@ -95,8 +96,8 @@ class GDataset(object):
             for _, event in enumerate(sent['event_coref']):
                 cur_idx += 1
                 sent_node_idx.append(cur_idx)
-                self.event_idx.append(cur_idx)
-                add_new_item(self.event_chain_dict, event['coref_chain'], cur_idx)
+                self.event_idx[split].append(cur_idx)
+                add_new_item(self.event_chain_dict[split], event['coref_chain'], cur_idx)
 
             # eneity mentions
             sent_node_idx += [i+cur_idx+1 for i in range(len(sent['entity_coref']))] 
@@ -118,19 +119,19 @@ class GDataset(object):
         return int(self.schema_event[descrip])
 
     def get_entity_node_idx(self, descrip):
-        return int(self.schema_entity[descrip]) + self.n_events
+        return int(self.schema_entity[descrip]) + self.n_events[descrip]
 
     def get_event_coref_adj(self, split):
         # event coref关系bool矩阵【对角线：1】
         #  for key in event chain dict:
         adj = np.zeros((self.n_nodes[split], self.n_nodes[split]))
-        for key in self.event_chain_dict:
-            events = self.event_chain_dict[key]
+        for key in self.event_chain_dict[split]:
+            events = self.event_chain_dict[split][key]
             mask = itertools.product(events,events)
             rows, cols = zip(*mask)
             adj[rows, cols] = 1
         # adj = adj + adj.T   # 处理成对称矩阵
-        return (adj + adj.T)>0
+        return ((adj + adj.T)>0)[self.event_idx[split], :][:, self.event_idx[split]]
 
     # def load_adjacency_sp_matrix(dataset, file, n_events, n_entities):
     #     n_nodes = n_events + n_entities

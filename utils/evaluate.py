@@ -5,7 +5,7 @@ from sklearn.metrics import label_ranking_loss, roc_auc_score, average_precision
 
 def format_metrics(metrics, split):
     # f_score, roc_score, ap_score, p, r
-    str = '{} set: AUC={:.5f}, AP={:.5f}'.format(split, metrics[0], metrics[1])
+    str = '\t{} set: AUC={:.5f}, AP={:.5f}'.format(split, metrics[0], metrics[1])
     return str
 
 
@@ -57,7 +57,7 @@ def get_bcubed(labels, preds):
     return f1_score(labels, preds)
 
 
-def test_model(emb, target_adj, event_idx):
+def test_model(emb, target_event_sub_adj, event_idx):
     # target_adj: bool?
 
     # 根据共指关系计算AUC等
@@ -66,7 +66,7 @@ def test_model(emb, target_adj, event_idx):
     # extract event mentions(trigger)
 
     event_emb = emb[event_idx, :]
-    target_event_adj = target_adj[event_idx, :][:, event_idx]
+    # target_event_adj = target_adj[event_idx, :][:, event_idx]
 
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))
@@ -76,7 +76,7 @@ def test_model(emb, target_adj, event_idx):
 
     mask = np.triu_indices(len(event_idx), 1)  # 上三角元素的下标
     preds = pred_event_adj[mask]
-    target = target_event_adj[mask]
+    target = target_event_sub_adj[mask]
 
     preds_true = preds[target==1]
     preds_false = preds[target==0]

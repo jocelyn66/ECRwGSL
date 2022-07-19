@@ -31,9 +31,9 @@ parser.add_argument("--reg", default=0, type=float,
 
 parser.add_argument("--optimizer", choices=["Adagrad", "Adam"], default="Adam",
                     help="Optimizer")
-parser.add_argument("--max-epochs", default=10, type=int,
+parser.add_argument("--max-epochs", default=200, type=int,
                     help="Maximum number of epochs to train for")
-parser.add_argument("--patience", default=200, type=int,
+parser.add_argument("--patience", default=500, type=int,
                     help="Number of epochs before early stopping")
 parser.add_argument("--valid-freq", default=1, type=int,
                     help="Number of epochs before validation")
