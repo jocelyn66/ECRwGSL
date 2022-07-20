@@ -200,8 +200,16 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
 
         model.eval()
 
-        metrics = test_model(hidden_emb, dataset.event_coref_adj['Train'], dataset.event_idx['Train'])
-        logging.info(format_metrics(metrics, 'Trian'))
+        metrics1 = test_model(hidden_emb, dataset.event_coref_adj['Train'], dataset.event_idx['Train'])
+        logging.info("\tevent coref:" + format_metrics(metrics1, 'Train'))
+
+        entity_idx = list(set(range(args.n_nodes['Train'])) - set(dataset.event_idx['Train']))
+        metrics2 = test_model(hidden_emb, dataset.entity_coref_adj['Train'], entity_idx)
+        logging.info("\tentity coref" + format_metrics(metrics2, 'Train'))
+
+        metrics3 = test_model(hidden_emb, dataset.adjacency['Train'], list(range(args.n_nodes['Train'])))
+        logging.info("\treconstruct adj:" + format_metrics(metrics3, 'Train'))
+
         logging.info("\ttime={:.5f}".format(time.time() - t))
 
         # val#####################################
@@ -213,9 +221,16 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
             logging.info("\taverage {} loss: {:.4f}".format(split, test_loss))
 
             test_hidden_emb = test_mu.data.detach().cpu().numpy()
-            test_metrics = test_model(test_hidden_emb, dataset.event_coref_adj[split], dataset.event_idx[split])
-            
-            logging.info(format_metrics(test_metrics, split))
+
+            test_metrics1 = test_model(test_hidden_emb, dataset.event_coref_adj[split], dataset.event_idx[split])
+            logging.info("\tevent coref:" + format_metrics(test_metrics1, split))
+
+            entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
+            test_metrics2 = test_model(test_hidden_emb, dataset.entity_coref_adj[split], entity_idx)
+            logging.info("\tentity coref:" + format_metrics(test_metrics2, split))
+
+            test_metrics3 = test_model(test_hidden_emb, dataset.adjacency[split], list(range(args.n_nodes[split])))
+            logging.info("\treconstruct adj:" + format_metrics(test_metrics3, split))
 
         # # 有监督
         # model.eval()
@@ -265,7 +280,7 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     # conll_f1 = run_conll_scorer(args.output_dir)
     # logging.info(conll_f1)
 
-    plot(save_dir, losses['Train'], losses['Dev'], losses['Test'], num)
+    plot(save_dir, num, losses['Train'], losses['Dev'], losses['Test'])
 
     end_model = datetime.datetime.now()
     logging.info('this model runtime: %s' % str(end_model - start_model))

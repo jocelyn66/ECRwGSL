@@ -27,8 +27,10 @@ class GDataset(object):
         self.event_idx = {'Train':[], 'Dev':[], 'Test':[]}
         # self.node = {}
         self.event_chain_dict = {'Train':{}, 'Dev':{}, 'Test':{}}  # train, dev, test
+        self.entity_chain_dict = {'Train':{}, 'Dev':{}, 'Test':{}}
         self.adjacency = {}  # 邻接矩阵
         self.event_coref_adj = {}  # 是event mention(trigger)，且共指关系成立，则为1.
+        self.entity_coref_adj = {}
         self.n_nodes = {}
         
         self.rand_node_rate = args.rand_node_rate
@@ -48,6 +50,8 @@ class GDataset(object):
         for split in ['Train', 'Dev', 'Test']:
             self.adjacency[split] = self.get_adjacency(file[split], split)
             self.event_coref_adj[split] = self.get_event_coref_adj(split)  # bool矩阵, 对角线无用
+            entity_idx = list(set(range(self.n_nodes[split])) - set(self.event_idx[split]))
+            self.entity_coref_adj[split] = self.get_coref_sub_adj(self.entity_chain_dict[split], entity_idx, self.n_nodes[split])
 
     def get_schema(self, path, split=''):
         # chain的schema, item：(chain descrip, id)
@@ -100,8 +104,12 @@ class GDataset(object):
                 add_new_item(self.event_chain_dict[split], event['coref_chain'], cur_idx)
 
             # eneity mentions
-            sent_node_idx += [i+cur_idx+1 for i in range(len(sent['entity_coref']))] 
-            cur_idx += len(sent['entity_coref'])
+            for _, entity in enumerate(sent['entity_coref']):
+                cur_idx += 1
+                sent_node_idx.append(cur_idx)
+                add_new_item(self.entity_chain_dict[split], entity['coref_chain'], cur_idx)
+            # sent_node_idx += [i+cur_idx+1 for i in range(len(sent['entity_coref']))] 
+            # cur_idx += len(sent['entity_coref'])
             
             # 句子子图
             adj[sent_node_idx[0]:sent_node_idx[-1]+1, sent_node_idx[0]:sent_node_idx[-1]+1] = 1
@@ -132,6 +140,18 @@ class GDataset(object):
             adj[rows, cols] = 1
         # adj = adj + adj.T   # 处理成对称矩阵
         return ((adj + adj.T)>0)[self.event_idx[split], :][:, self.event_idx[split]]
+
+    def get_coref_sub_adj(self, dict, idx, n_nodes):
+        # event coref关系bool矩阵【对角线：1】
+        #  for key in event chain dict:
+        adj = np.zeros((n_nodes, n_nodes))
+        for key in dict:
+            nodes = dict[key]
+            mask = itertools.product(nodes, nodes)
+            rows, cols = zip(*mask)
+            adj[rows, cols] = 1
+        # adj = adj + adj.T   # 处理成对称矩阵
+        return ((adj + adj.T)>0)[idx, :][:, idx]
 
     # def load_adjacency_sp_matrix(dataset, file, n_events, n_entities):
     #     n_nodes = n_events + n_entities

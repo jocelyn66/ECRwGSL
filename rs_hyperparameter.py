@@ -1,14 +1,14 @@
 from ast import arg
 import numpy as np
 
-search_size = 20
+search_size = 30
 rs_tunes = 'dropout,learning_rate,rand_node_rate'
 
-hps_dropout = [0, 0.2]*10
+hps_dropout = [0, 0.2] * 15
 # hps_lr = np.random.rand(search_size) * 0.004 + 0.001    # [0.001, 0.005]
-hps_lr = np.random.rand(search_size)*4-5
+hps_lr = np.random.rand(search_size)*5-5
 hps_lr = np.power(10, hps_lr)   # [0.00001, 0.1]
-hps_rand_node_rate = [0.1, 0.2, 0.3]*10
+hps_rand_node_rate = [0.05, 0.1, 0.2]*10
 # hps_encoder = ['gae', 'gvae'] * 10
 
 
