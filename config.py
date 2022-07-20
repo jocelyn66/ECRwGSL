@@ -44,7 +44,7 @@ parser.add_argument("--init-size", default=1e-3, type=float,
                     help="Initial embeddings' scale")
 parser.add_argument("--learning-rate", default=1e-3, type=float,
                     help="Learning rate")
-parser.add_argument('--weight_decay', type=float, default=1e-2)
+parser.add_argument('--weight_decay', type=float, default=1e-5)
 
 # configuration for optimal parameters
 parser.add_argument("--rand-search", "--rs", action='store_true',

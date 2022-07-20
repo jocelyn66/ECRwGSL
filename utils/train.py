@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import numpy as np 
 import scipy.sparse as sp
 
-LOG_DIR = './logs/'
+LOG_DIR = '../logs/'
 
 
 def get_savedir(dataset, model, encoder, decoder, grid_search):

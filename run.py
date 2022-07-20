@@ -56,6 +56,8 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     start_model = datetime.datetime.now()
     torch.manual_seed(2022)
 
+    args.weight_decay = args.learning_rate / 100
+
     if args.rand_search:
         set_hp(args, hps)
 
@@ -167,7 +169,7 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     logging.info("Total number of parameters {}".format(total))
     model.to(args.device)    # GUP
 
-    optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.learning_rate)
+    optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     regularizer = None
     if args.regularizer:
         regularizer = getattr(regularizers, args.regularizer)(args.reg)
