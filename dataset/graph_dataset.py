@@ -6,6 +6,7 @@ import numpy as np
 import json
 
 import numpy as np
+from torch import triplet_margin_loss
 from utils.train import add_new_item
 
 DATA_PATH = './data/'
@@ -166,3 +167,17 @@ class GDataset(object):
     #     # npstack -> adj
     #     # 返回对称矩阵
     #     pass
+
+
+def make_examples_indices(target_adj):
+    # target_adj: indices x indices
+    
+    tri_target_adj = np.triu(target_adj, 1)
+
+    true_indices = np.where(tri_target_adj>0)
+
+    false_indices = np.where(tri_target_adj==0)
+    mask = np.arange(0, len(false_indices[0]))
+    np.random.shuffle(mask)
+    
+    return true_indices, (false_indices[0][mask[:len(true_indices)]], false_indices[1][mask[:len(true_indices)]])

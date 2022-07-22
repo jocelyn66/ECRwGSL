@@ -9,7 +9,7 @@ def plot(path, num, train_loss, dev_loss, test_loss):
     
     dir = os.path.join(path, 'converg') + str(num)
 
-    fig, ax = plt.subplots(4,1,dpi=100, figsize=(18,12))
+    fig, ax = plt.subplots(4,1,dpi=100, figsize=(12,18))
     epoch = list(range(len(train_loss)))
     ax[0].plot(epoch, train_loss, label='Train', color='#4472C4')
     ax[0].plot(epoch, dev_loss, label='Dev', color='#C00000')

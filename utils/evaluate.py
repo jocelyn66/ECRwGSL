@@ -57,29 +57,32 @@ def get_bcubed(labels, preds):
     return f1_score(labels, preds)
 
 
-def test_model(emb, target_event_sub_adj, event_idx):
-    # target_adj: bool?
+def test_model(emb, indices, true_indices, false_indices):
+    # target_adj: 
 
     # 根据共指关系计算AUC等
     # 大矩阵: embedding, 共指关系矩阵
     # event mention在大矩阵中的下标,用于提取正负例,方法 取上三角矩阵(不含对角线)
     # extract event mentions(trigger)
 
-    event_emb = emb[event_idx, :]
+    emb_ = emb[indices, :]
     # target_event_adj = target_adj[event_idx, :][:, event_idx]
 
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))
 
     # Predict on test set of edges
-    pred_event_adj = sigmoid(np.dot(event_emb, event_emb.T))
+    pred_adj = sigmoid(np.dot(emb_, emb_.T))
 
-    mask = np.triu_indices(len(event_idx), 1)  # 上三角元素的下标
-    preds = pred_event_adj[mask]
-    target = target_event_sub_adj[mask]
+    # mask = np.triu_indices(len(indices), 1)  # 上三角元素的索引list
+    # preds = pred_event_adj[mask]
+    # target = target_sub_adj[mask]
 
-    preds_true = preds[target==1]
-    preds_false = preds[target==0]
+    preds_true = pred_adj[true_indices]
+    preds_false = pred_adj[false_indices]
+
+    # np.random.shuffle(preds_false)
+    # preds_false = preds_false[:len(preds_true)] # 正:负=1:1
 
     preds_all = np.hstack([preds_true, preds_false])
     labels_all = np.hstack([np.ones(len(preds_true)), np.zeros(len(preds_false))])

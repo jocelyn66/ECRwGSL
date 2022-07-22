@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+from sklearn.model_selection import PredefinedSplit
 
 import torch.optim
 import math
@@ -20,7 +21,7 @@ from utils.visual import *
 from dataset.dataset_process import preprocess_function
 
 
-from dataset.graph_dataset import GDataset
+from dataset.graph_dataset import GDataset, make_examples_indices
 from datasets import load_dataset
 
 import transformers
@@ -97,6 +98,19 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
         adj_norm[split] = preprocess_adjacency(dataset.adjacency[split])
         pos_weight[split] = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
         norm[split] = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
+
+    event_true_sub_indices = {}
+    event_false_sub_indices = {}
+    entity_true_sub_indices = {}
+    entity_false_sub_indices = {}
+    recover_true_sub_indices = {}
+    recover_false_sub_indices = {}
+
+    for split in ['Train', 'Dev', 'Test']:
+        event_true_sub_indices[split], event_false_sub_indices[split] = make_examples_indices(dataset.event_coref_adj[split])
+        # entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
+        entity_true_sub_indices[split], entity_false_sub_indices[split] = make_examples_indices(dataset.entity_coref_adj[split])
+        recover_true_sub_indices[split], recover_false_sub_indices[split] = make_examples_indices(dataset.adjacency[split])
 
     # bert################################
      #Load Datasets
@@ -202,14 +216,14 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
 
         model.eval()
 
-        metrics1 = test_model(hidden_emb, dataset.event_coref_adj['Train'], dataset.event_idx['Train'])
+        metrics1 = test_model(hidden_emb, dataset.event_idx['Train'], event_true_sub_indices['Train'], event_false_sub_indices['Train'])
         logging.info("\tevent coref:" + format_metrics(metrics1, 'Train'))
 
         entity_idx = list(set(range(args.n_nodes['Train'])) - set(dataset.event_idx['Train']))
-        metrics2 = test_model(hidden_emb, dataset.entity_coref_adj['Train'], entity_idx)
+        metrics2 = test_model(hidden_emb, entity_idx, entity_true_sub_indices['Train'], entity_false_sub_indices['Train'])
         logging.info("\tentity coref" + format_metrics(metrics2, 'Train'))
 
-        metrics3 = test_model(hidden_emb, dataset.adjacency['Train'], list(range(args.n_nodes['Train'])))
+        metrics3 = test_model(hidden_emb, list(range(args.n_nodes['Train'])), recover_true_sub_indices['Train'], recover_false_sub_indices['Train'])
         logging.info("\treconstruct adj:" + format_metrics(metrics3, 'Train'))
 
         logging.info("\ttime={:.5f}".format(time.time() - t))
@@ -224,14 +238,14 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
 
             test_hidden_emb = test_mu.data.detach().cpu().numpy()
 
-            test_metrics1 = test_model(test_hidden_emb, dataset.event_coref_adj[split], dataset.event_idx[split])
+            test_metrics1 = test_model(test_hidden_emb, dataset.event_idx[split], event_true_sub_indices[split], event_false_sub_indices[split])
             logging.info("\tevent coref:" + format_metrics(test_metrics1, split))
 
             entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
-            test_metrics2 = test_model(test_hidden_emb, dataset.entity_coref_adj[split], entity_idx)
+            test_metrics2 = test_model(test_hidden_emb, entity_idx, entity_true_sub_indices[split], entity_false_sub_indices[split])
             logging.info("\tentity coref:" + format_metrics(test_metrics2, split))
 
-            test_metrics3 = test_model(test_hidden_emb, dataset.adjacency[split], list(range(args.n_nodes[split])))
+            test_metrics3 = test_model(test_hidden_emb, list(range(args.n_nodes[split])), recover_true_sub_indices[split], recover_false_sub_indices[split])
             logging.info("\treconstruct adj:" + format_metrics(test_metrics3, split))
 
         # # 有监督
