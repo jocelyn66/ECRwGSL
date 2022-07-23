@@ -97,6 +97,6 @@ def add_new_item(dict, item, idx):
 
 def preprocess_adjacency(adj):
     rowsum = np.array(adj.sum(1))
-    degree_mat_inv_sqrt = np.diag(np.power(rowsum, -0.5))  # ??
+    degree_mat_inv_sqrt = np.diag(np.power(rowsum, -0.5))
     adj_normalized = adj.dot(degree_mat_inv_sqrt).transpose().dot(degree_mat_inv_sqrt)
     return adj_normalized

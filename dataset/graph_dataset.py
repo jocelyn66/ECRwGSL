@@ -1,19 +1,15 @@
+from __future__ import print_function
 from cmath import sqrt
 import itertools
-import os
-from pydoc import doc
+from unicodedata import numeric
 import numpy as np
 import json
 
 import numpy as np
-from torch import triplet_margin_loss
+from pyparsing import nums
 from utils.train import add_new_item
 
 DATA_PATH = './data/'
-
-# np.random.seed(123)
-# n_events = 3808
-# n_entities = 4758
 
 n_events = {'Train': 3808,'Dev': 1245, 'Test': 1780}
 n_entities = {'Train': 4758,'Dev': 1476, 'Test': 2055}
@@ -24,13 +20,11 @@ class GDataset(object):
     def __init__(self, args):
 
         self.name = args.dataset
-        # self.data = {}  # 
         self.event_idx = {'Train':[], 'Dev':[], 'Test':[]}
-        # self.node = {}
-        self.event_chain_dict = {'Train':{}, 'Dev':{}, 'Test':{}}  # train, dev, test
+        self.event_chain_dict = {'Train':{}, 'Dev':{}, 'Test':{}}
         self.entity_chain_dict = {'Train':{}, 'Dev':{}, 'Test':{}}
-        self.adjacency = {}  # 邻接矩阵
-        self.event_coref_adj = {}  # 是event mention(trigger)，且共指关系成立，则为1.
+        self.adjacency = {}  # 邻接矩阵, 节点:event mention(trigger), entity mention, 边:0./1.,对角线0,句子关系,文档关系
+        self.event_coref_adj = {}  # 节点:event mention, 边: 共指关系(成立:1), 对角线1(但不用作label)
         self.entity_coref_adj = {}
         self.n_nodes = {}
         
@@ -43,16 +37,13 @@ class GDataset(object):
             assert(self.n_entities[split] > 0)
             self.n_nodes[split] = self.n_events[split] + self.n_entities[split]
 
-        # self.adjacency['Train'] = self.get_adjacency(args.train_file, 'Train')  # 0. 1.矩阵, 对角线1
-        # self.adjacency['Dev'] = self.get_adjacency(args.dev_file, 'Dev')
-        # self.adjacency['Test'] = self.get_adjacency(args.test_file, 'Test')
         file = {'Train': args.train_file, 'Dev': args.dev_file,'Test': args.test_file}
         # self.event_coref_adj['Train'] = self.get_event_coref_adj('Train')
         for split in ['Train', 'Dev', 'Test']:
             self.adjacency[split] = self.get_adjacency(file[split], split)
-            self.event_coref_adj[split] = self.get_event_coref_adj(split)  # bool矩阵, 对角线无用
+            self.event_coref_adj[split] = self.get_event_coref_adj(split)  # bool矩阵, 对角线0
             entity_idx = list(set(range(self.n_nodes[split])) - set(self.event_idx[split]))
-            self.entity_coref_adj[split] = self.get_coref_sub_adj(self.entity_chain_dict[split], entity_idx, self.n_nodes[split])
+            self.entity_coref_adj[split] = self.get_coref_sub_adj(self.entity_chain_dict[split], entity_idx, split)
 
     def get_schema(self, path, split=''):
         # chain的schema, item：(chain descrip, id)
@@ -67,7 +58,7 @@ class GDataset(object):
         # 构图：
         # 节点：event, entity
         # 边：句子 文档关系
-        # 【对角线：1】
+        # 【对角线：0】
 
         adj = np.zeros((self.n_nodes[split], self.n_nodes[split]))
         last_doc_id = ''
@@ -77,22 +68,22 @@ class GDataset(object):
         
         with open(path, 'r') as f:
             lines = f.readlines()
-
+        
         for _, line in enumerate(lines):
-
             sent = json.loads(line)
-            #  同一文档rand_rate的概率随机放点
 
+            #  同一文档rand_rate的概率随机放点
             if last_doc_id != sent['doc_id']:
-                if doc_node_idx:
-                    # rand_rows = np.random.shuffle(doc_node_idx)[:int(num*rand_node_rate)]
-                    rows_idx = np.random.rand(len(doc_node_idx)) < sqrt(self.rand_node_rate)
-                    cols_idx = np.random.rand(len(doc_node_idx)) < sqrt(self.rand_node_rate)
-                    if (rows_idx & cols_idx).any is True:
-                        rand_rows = np.array(doc_node_idx)[rows_idx]
-                        # rand_rows = doc_node_idx[(np.random.rand(len(doc_node_idx))+1) < (-rand_rate*2)]
-                        rand_cols = np.array(doc_node_idx)[cols_idx]
-                        adj[rand_rows][rand_cols] = 1
+
+                num = int(len(doc_node_idx)*self.rand_node_rate)
+                if doc_node_idx and num>0:
+                    idx = doc_node_idx
+                    np.random.shuffle(idx)
+                    rand_rows_idx = idx[:num]
+                    np.random.shuffle(idx)
+                    rand_cols_idx = idx[:num]
+
+                    adj[rand_rows_idx, rand_cols_idx] = 1
 
                 last_doc_id = sent['doc_id']
                 doc_node_idx = []
@@ -109,16 +100,14 @@ class GDataset(object):
                 cur_idx += 1
                 sent_node_idx.append(cur_idx)
                 add_new_item(self.entity_chain_dict[split], entity['coref_chain'], cur_idx)
-            # sent_node_idx += [i+cur_idx+1 for i in range(len(sent['entity_coref']))] 
-            # cur_idx += len(sent['entity_coref'])
             
             # 句子子图
             adj[sent_node_idx[0]:sent_node_idx[-1]+1, sent_node_idx[0]:sent_node_idx[-1]+1] = 1
 
-            doc_node_idx += sent_node_idx
+            doc_node_idx.extend(sent_node_idx)
             sent_node_idx = []
 
-        # 处理adj: 对称，对角线0
+        # constraint: 对称，对角线0
         adj = np.where((adj + adj.T)>0, 1., 0.)
         adj[np.diag_indices_from(adj)] = 0
         assert(adj.diagonal(offset=0, axis1=0, axis2=1).all()==0)
@@ -136,48 +125,64 @@ class GDataset(object):
         adj = np.zeros((self.n_nodes[split], self.n_nodes[split]))
         for key in self.event_chain_dict[split]:
             events = self.event_chain_dict[split][key]
-            mask = itertools.product(events,events)
+
+            mask = itertools.product(events, events)
             rows, cols = zip(*mask)
             adj[rows, cols] = 1
         # adj = adj + adj.T   # 处理成对称矩阵
+
         return ((adj + adj.T)>0)[self.event_idx[split], :][:, self.event_idx[split]]
 
-    def get_coref_sub_adj(self, dict, idx, n_nodes):
+    def get_coref_sub_adj(self, dict, idx, split):
         # event coref关系bool矩阵【对角线：1】
         #  for key in event chain dict:
-        adj = np.zeros((n_nodes, n_nodes))
+        adj = np.zeros((self.n_nodes[split], self.n_nodes[split]))
         for key in dict:
             nodes = dict[key]
             mask = itertools.product(nodes, nodes)
             rows, cols = zip(*mask)
             adj[rows, cols] = 1
-        # adj = adj + adj.T   # 处理成对称矩阵
         return ((adj + adj.T)>0)[idx, :][:, idx]
 
-    # def load_adjacency_sp_matrix(dataset, file, n_events, n_entities):
-    #     n_nodes = n_events + n_entities
-    #     # load train set
-    #     # load train schema->event_idx, entity_idx
-    #     for line:
-    #         # 若doc结束:随机加边
-    #         # 句子中的mention list:
-    #         # 全排列
-    #         # np.stack
-        
-    #     # npstack -> adj
-    #     # 返回对称矩阵
-    #     pass
 
-
-def make_examples_indices(target_adj):
+def get_examples_indices(target_adj):
     # target_adj: indices x indices
     
     tri_target_adj = np.triu(target_adj, 1)
 
     true_indices = np.where(tri_target_adj>0)
 
-    false_indices = np.where(tri_target_adj==0)
-    mask = np.arange(0, len(false_indices[0]))
+    false_indices_all = np.where(tri_target_adj==0)
+    mask = np.arange(0, len(false_indices_all[0]))
     np.random.shuffle(mask)
+    false_indices = (false_indices_all[0][mask[:len(true_indices[0])]], false_indices_all[1][mask[:len(true_indices[0])]])
+
+    return true_indices, false_indices
+
+    # def ismember(a, b, tol=5):
+    #     rows_close = np.all(np.round(a - b[:, None], tol) == 0, axis=-1)
+    #     return np.any(rows_close)
+
+    # false_indices = []
+    # while len(false_indices) < len(true_indices):
+    #     idx_i = np.random.randint(0, target_adj.shape[0])
+    #     idx_j = np.random.randint(0, target_adj.shape[0])
+    #     if idx_i == idx_j:
+    #         continue
+    #     if idx_i > idx_j:
+    #         idx_i, idx_j = idx_j, idx_i
+    #     if ismember([idx_i, idx_j], true_indices):
+    #         continue
+    #     if false_indices:
+    #         if ismember([idx_i, idx_j], np.array(false_indices)):
+    #             continue
+    #     false_indices.append((idx_i, idx_j))
+
+    # false_indices_tup = zip(false_indices_ind[0], false_indices_ind[1])
+    # false_indices_list = list(false_indices_tup)
+    # print("####1", len(false_indices_list), false_indices_list[:10])
+    # np.random.shuffle(false_indices_list)
     
-    return true_indices, (false_indices[0][mask[:len(true_indices)]], false_indices[1][mask[:len(true_indices)]])
+    # return true_indices, zip(*false_indices_list)
+    # return true_indices, false_indices
+    

@@ -50,6 +50,7 @@ def bcubed(gold_lst, predicted_lst):
     p = precision(pred, gold)
     r = recall(pred, gold)
     return r, p, fscore(p, r)
+    
 ###################################
 
 

@@ -7,7 +7,6 @@ from sklearn.model_selection import PredefinedSplit
 
 import torch.optim
 import math
-import numpy as np
 
 import models.ecr_model
 import optimizers.regularizers as regularizers
@@ -21,7 +20,7 @@ from utils.visual import *
 from dataset.dataset_process import preprocess_function
 
 
-from dataset.graph_dataset import GDataset, make_examples_indices
+from dataset.graph_dataset import GDataset, get_examples_indices
 from datasets import load_dataset
 
 import transformers
@@ -54,10 +53,9 @@ def set_logger(args):
 
 def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
 
+    # config
     start_model = datetime.datetime.now()
     torch.manual_seed(2022)
-
-    args.weight_decay = args.learning_rate / 100
 
     if args.rand_search:
         set_hp(args, hps)
@@ -67,25 +65,15 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
         with open(os.path.join(save_dir, "config.json"), 'a') as fjson:
             json.dump(vars(args), fjson)
 
-    model_name = "model_feat-d{}_h1-d{}_h2-d{}.pt".format(
-        args.feat_dim, args.hidden1, args.hidden2)
+    model_name = "model{}_feat-d{}_h1-d{}_h2-d{}.pt".format(num, args.feat_dim, args.hidden1, args.hidden2)
     logging.info(args)
 
     if args.double_precision:
         torch.set_default_dtype(torch.float64)
-        print("####double precision")
+        print("double precision")
 
-    # load data############################处理成图
-    # dataset = load_dataset(args.dataset)
-    # args.sizes = dataset.get_shape()
-    # logging.info("\t " + str(dataset.get_shape()))
-    # train_data = dataset['train']
-    # valid_data = dataset['valid']
-    # test_data = dataset['test']
-    #######
-
+    # dataset###############
     dataset = GDataset(args)
-
     args.n_nodes = dataset.n_nodes
 
     # Some preprocessing:
@@ -95,7 +83,7 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     adj_norm = {}
     for split in ['Train', 'Dev', 'Test']:
         adj = dataset.adjacency[split]
-        adj_norm[split] = preprocess_adjacency(dataset.adjacency[split])
+        adj_norm[split] = preprocess_adjacency(adj)
         pos_weight[split] = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
         norm[split] = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
 
@@ -107,10 +95,10 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     recover_false_sub_indices = {}
 
     for split in ['Train', 'Dev', 'Test']:
-        event_true_sub_indices[split], event_false_sub_indices[split] = make_examples_indices(dataset.event_coref_adj[split])
+        event_true_sub_indices[split], event_false_sub_indices[split] = get_examples_indices(dataset.event_coref_adj[split])
         # entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
-        entity_true_sub_indices[split], entity_false_sub_indices[split] = make_examples_indices(dataset.entity_coref_adj[split])
-        recover_true_sub_indices[split], recover_false_sub_indices[split] = make_examples_indices(dataset.adjacency[split])
+        entity_true_sub_indices[split], entity_false_sub_indices[split] = get_examples_indices(dataset.entity_coref_adj[split])
+        recover_true_sub_indices[split], recover_false_sub_indices[split] = get_examples_indices(dataset.adjacency[split])
 
     # bert################################
      #Load Datasets
@@ -295,6 +283,9 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     # test_f1 = None
     # conll_f1 = run_conll_scorer(args.output_dir)
     # logging.info(conll_f1)
+
+    model_path = os.path.join(save_dir, model_name)
+    torch.save(model.cpu().state_dict(), model_path)
 
     plot(save_dir, num, losses['Train'], losses['Dev'], losses['Test'])
 

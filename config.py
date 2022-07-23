@@ -42,9 +42,9 @@ parser.add_argument("--batch-size", default=512, type=int,
 
 parser.add_argument("--init-size", default=1e-3, type=float,
                     help="Initial embeddings' scale")
-parser.add_argument("--learning-rate", default=1e-3, type=float,
+parser.add_argument("--learning-rate", default=1e-5, type=float,
                     help="Learning rate")
-parser.add_argument('--weight_decay', type=float, default=1e-5)
+parser.add_argument('--weight_decay', type=float, default=1e-2)
 
 # configuration for optimal parameters
 parser.add_argument("--rand-search", "--rs", action='store_true',
