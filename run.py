@@ -30,7 +30,6 @@ from transformers import (
     BertTokenizer,
     BertModel
 )
-import json
 
 
 def set_logger(args):
@@ -81,11 +80,16 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     pos_weight = {}
     norm = {}
     adj_norm = {}
+    
     for split in ['Train', 'Dev', 'Test']:
+        if not args.double_precision:
+            dataset.adjacency[split] = dataset.adjacency[split].astype(np.float32)
         adj = dataset.adjacency[split]
         adj_norm[split] = preprocess_adjacency(adj)
         pos_weight[split] = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
         norm[split] = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
+        if not args.double_precision:
+            pos_weight[split] = pos_weight[split].astype(np.float32)
 
     event_true_sub_indices = {}
     event_false_sub_indices = {}
@@ -195,7 +199,9 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
 
         loss, mu = optimizer.epoch(train_dataset, adj_norm['Train'], dataset.adjacency['Train'])
         losses['Train'].append(loss)
-        logging.info("Epoch {} | average train loss: {:.4f}".format(epoch, loss))
+        logging.info("Epoch {} | ".format(epoch))
+        logging.info("\tTrain")
+        logging.info("\t\taverage train loss: {:.4f}".format(loss))
         if math.isnan(loss):
             break
 
@@ -205,16 +211,16 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
         model.eval()
 
         metrics1 = test_model(hidden_emb, dataset.event_idx['Train'], event_true_sub_indices['Train'], event_false_sub_indices['Train'])
-        logging.info("\tevent coref:" + format_metrics(metrics1, 'Train'))
+        logging.info("\t\tevent coref:" + format_metrics(metrics1, 'Train'))
 
         entity_idx = list(set(range(args.n_nodes['Train'])) - set(dataset.event_idx['Train']))
         metrics2 = test_model(hidden_emb, entity_idx, entity_true_sub_indices['Train'], entity_false_sub_indices['Train'])
-        logging.info("\tentity coref" + format_metrics(metrics2, 'Train'))
+        logging.info("\t\tentity coref:" + format_metrics(metrics2, 'Train'))
 
         metrics3 = test_model(hidden_emb, list(range(args.n_nodes['Train'])), recover_true_sub_indices['Train'], recover_false_sub_indices['Train'])
-        logging.info("\treconstruct adj:" + format_metrics(metrics3, 'Train'))
+        logging.info("\t\treconstruct adj:" + format_metrics(metrics3, 'Train'))
 
-        logging.info("\ttime={:.5f}".format(time.time() - t))
+        logging.info("\t\ttime={:.5f}".format(time.time() - t))
 
         # val#####################################
 
@@ -222,19 +228,20 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
         for split in ['Dev', 'Test']:
             test_loss, test_mu = optimizer.eval(datasets[split], adj_norm[split], dataset.adjacency[split], split)  # norm adj
             losses[split].append(test_loss)
-            logging.info("\taverage {} loss: {:.4f}".format(split, test_loss))
+            logging.info("\t{}".format(split))
+            logging.info("\t\taverage {} loss: {:.4f}".format(split, test_loss))
 
             test_hidden_emb = test_mu.data.detach().cpu().numpy()
 
             test_metrics1 = test_model(test_hidden_emb, dataset.event_idx[split], event_true_sub_indices[split], event_false_sub_indices[split])
-            logging.info("\tevent coref:" + format_metrics(test_metrics1, split))
+            logging.info("\t\tevent coref:" + format_metrics(test_metrics1, split))
 
             entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
             test_metrics2 = test_model(test_hidden_emb, entity_idx, entity_true_sub_indices[split], entity_false_sub_indices[split])
-            logging.info("\tentity coref:" + format_metrics(test_metrics2, split))
+            logging.info("\t\tentity coref:" + format_metrics(test_metrics2, split))
 
             test_metrics3 = test_model(test_hidden_emb, list(range(args.n_nodes[split])), recover_true_sub_indices[split], recover_false_sub_indices[split])
-            logging.info("\treconstruct adj:" + format_metrics(test_metrics3, split))
+            logging.info("\t\treconstruct adj:" + format_metrics(test_metrics3, split))
 
         # # 有监督
         # model.eval()

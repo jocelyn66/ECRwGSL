@@ -20,7 +20,7 @@ parser.add_argument("--gpu", type=int, default=0,
                     help="gpu")
 parser.add_argument("--debug", action="store_true",
                     help="Only use 1000 examples for debugging")
-parser.add_argument("--double-precision", action="store_true",default=True,
+parser.add_argument("--double-precision", action="store_true",
                     help="Machine precision")
 
 # training configuration###############

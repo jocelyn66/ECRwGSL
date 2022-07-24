@@ -100,3 +100,7 @@ def preprocess_adjacency(adj):
     degree_mat_inv_sqrt = np.diag(np.power(rowsum, -0.5))
     adj_normalized = adj.dot(degree_mat_inv_sqrt).transpose().dot(degree_mat_inv_sqrt)
     return adj_normalized
+
+
+def sigmoid(x):
+        return 1 / (1 + np.exp(-x))

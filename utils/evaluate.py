@@ -1,11 +1,14 @@
 from cProfile import label
+from pydoc import describe
 import numpy as np
 from sklearn.metrics import label_ranking_loss, roc_auc_score, average_precision_score, f1_score, precision_score, recall_score
+from utils.train import sigmoid
+from utils.visual import *
 
 
 def format_metrics(metrics, split):
     # f_score, roc_score, ap_score, p, r
-    str = '\t{} set: AUC={:.5f}, AP={:.5f}'.format(split, metrics[0], metrics[1])
+    str = 'AUC={:.5f}, AP={:.5f}'.format(metrics[0], metrics[1])
     return str
 
 
@@ -69,9 +72,6 @@ def test_model(emb, indices, true_indices, false_indices):
     emb_ = emb[indices, :]
     # target_event_adj = target_adj[event_idx, :][:, event_idx]
 
-    def sigmoid(x):
-        return 1 / (1 + np.exp(-x))
-
     # Predict on test set of edges
     pred_adj = sigmoid(np.dot(emb_, emb_.T))
 
@@ -95,3 +95,18 @@ def test_model(emb, indices, true_indices, false_indices):
     # p = precision_score(labels_all, preds_all>threshold)
     # r = recall_score(labels_all, preds_all>threshold) 
     return auc_score, ap_score
+
+
+# 改路径
+def visual_graph(path, split, orig, pred_adj, num=-1, threshold=0.5):  # 输入邻接矩阵, 画出graph
+
+    # train
+    # 原图
+
+    plot_adj(path, split+"original graph", orig, num)
+    
+    
+    pred_adj_ = np.where(pred_adj>threshold, 1, 0)
+    plot_adj(path, split+"pred graph", pred_adj_, num=num)
+    plot_adj(path, split+"weighted pred graph", pred_adj, num=num, weighted=True)
+    
