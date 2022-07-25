@@ -1,5 +1,6 @@
 from cProfile import label
 from pydoc import describe
+from statistics import median
 import numpy as np
 from sklearn.metrics import label_ranking_loss, roc_auc_score, average_precision_score, f1_score, precision_score, recall_score
 from utils.train import sigmoid
@@ -97,16 +98,36 @@ def test_model(emb, indices, true_indices, false_indices):
     return auc_score, ap_score
 
 
-# 改路径
-def visual_graph(path, split, orig, pred_adj, num=-1, threshold=0.5):  # 输入邻接矩阵, 画出graph
+def visual_graph(path, split, orig, pred_adj, num=-1, threshold=0.5):  # 输入邻接矩阵(原图, 预测图), 画出graph
 
-    # train
-    # 原图
-
-    plot_adj(path, split+"original graph", orig, num)
-    
+    # plot_adj(path, split+" original visual graph", orig, num)  # 原图
     
     pred_adj_ = np.where(pred_adj>threshold, 1, 0)
-    plot_adj(path, split+"pred graph", pred_adj_, num=num)
-    plot_adj(path, split+"weighted pred graph", pred_adj, num=num, weighted=True)
-    
+    plot_adj(path, split+" pred visual graph", pred_adj_, num=num)
+
+    # plot_adj(path, split+" weighted pred visual graph", pred_adj, num=num, weighted=True)
+
+
+def degree_analysis(path, split, orig, pred_adj, num=-1, threshold=0.5):
+
+    degree = np.sum(orig, axis=1).astype(np.int)
+    # degree_list_ = np.bincount(degree)
+    max_degree = np.max(degree)
+    min_degree = np.min(degree)
+    mean_degree = np.mean(degree)
+    median_degree = np.median(degree)
+    print("\t\torig graph degree:", '\tmean:', mean_degree, '\tmedian:', median_degree, '\tmax:', max_degree, '\tmin', min_degree)
+
+    # plot_hist(path, split+"original degree graph", degree_list_, num=num)
+
+    adj = np.where(pred_adj>threshold, 1., 0.)
+    pred_degree = np.sum(adj, axis=1).astype(np.int)
+    # degree_list = np.bincount(pred_degree)  # 索引:度, 值:count
+
+    max_degree = np.max(pred_degree)
+    min_degree = np.min(pred_degree)
+    mean_degree = np.mean(pred_degree)
+    median_degree = np.median(pred_degree)
+    print("\t\tpred graph degree:", '\tmean:', mean_degree, '\tmedian:', median_degree, '\tmax:', max_degree, '\tmin', min_degree)
+
+    plot_hist(path, split+" original degree graph", split+" pred degree graph", degree, pred_degree, num=num)

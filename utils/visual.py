@@ -38,26 +38,52 @@ def plot(path, num, train_loss, dev_loss, test_loss):
     plt.close(fig)
     
 
-def plot_adj(path, descrip, adj, num=-1, weighted=False):
+def plot_adj(path, descrip, adj, num=-1, weighted=False):  # 画adj
 
     # networks
 
     G = nx.Graph()
     if not weighted:
-        edges = zip(np.where(adj>0))
+        ind = np.where(np.triu(adj, 1)>0)
+        print("#edges=", len(ind[0]))
+        # print("####", type(ind), ind)
+        edges = zip(ind[0], ind[1])
         G.add_edges_from(edges)
 
     # else (x, y, w)
-    plt.figure(figsize=(40,40), dpi=100)
+    plt.figure(figsize=(80,80), dpi=300)
+    plt.title(descrip)
     dir = os.path.join(path, descrip) + str(num) + '.png'
     pos = nx.spring_layout(G)
 
     if not weighted:
-        nx.draw(G, pos, node_color='b', edgelist=edges, width=1.0, edge_cmap=plt.cm.Blues, node_size=1)
+        # nx.draw(G, pos, node_color='b', edgelist=edges, width=1.0, edge_cmap=plt.cm.Blues, node_size=1)
         nx.draw(G, pos, node_color='b', width=1.0, edge_cmap=plt.cm.Blues, node_size=1)
     else:
         pass
         # nx.draw(G, pos, node_color='b', edgelist=edges, edge_color=weights, width=1.0, edge_cmap=plt.cm.Blues, node_size=1)
     # plt.savefig('./edges1.png')
+    plt.savefig(dir)
+    plt.close()
+
+
+def plot_hist(path, descrip, descrip2, degree, degree2, num=-1):
+
+    fig, ax = plt.subplots(2, 1, dpi=100, figsize=(40,30))
+
+    ax[0].hist(degree, bins=200, color='b', alpha=0.3)
+    ax[0].set_title(descrip)
+    ax[0].set_xlabel('degree')
+    # ax[0].set_ylabel('log-#nodes')
+
+    ax[1].hist(degree2, bins=200, color='b', alpha=0.3)
+    ax[1].set_title(descrip2)
+    ax[1].set_xlabel('degree')
+    # ax[1].set_ylabel('log-#nodes')
+
+    # plt.yscale('log')
+    fig.tight_layout()
+
+    dir = os.path.join(path, descrip) + str(num) + '.png'
     plt.savefig(dir)
     plt.close()

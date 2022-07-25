@@ -111,6 +111,7 @@ class GDataset(object):
         adj = np.where((adj + adj.T)>0, 1., 0.)
         adj[np.diag_indices_from(adj)] = 0
         assert(adj.diagonal(offset=0, axis1=0, axis2=1).all()==0)
+
         return adj
         
     def get_event_node_idx(self, descrip):
@@ -157,6 +158,7 @@ def get_examples_indices(target_adj):
     np.random.shuffle(mask)
     false_indices = (false_indices_all[0][mask[:len(true_indices[0])]], false_indices_all[1][mask[:len(true_indices[0])]])
 
+    assert len(true_indices[0]) == len(false_indices[0])
     return true_indices, false_indices
 
     # def ismember(a, b, tol=5):

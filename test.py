@@ -42,9 +42,11 @@ DATA_PATH = './data/'
 parser = argparse.ArgumentParser(description="Test")
 parser.add_argument('--model-dir', '--dir', help="Model path")  # /home/h3c/00/running/logs/07_24/ecb+/gs_ecr-gsl_gae+_02_19_55/
 parser.add_argument('--num', '--n', type=int, default=-1)
+parser.add_argument('--threshold', type=float, default=0.5)
 
 
-def test(model_dir, num=-1):
+def test(model_dir, num=-1, threshold=0.5):
+    torch.manual_seed(2022)
     # load config
     with open(os.path.join(model_dir, "config.json"), "r") as f:
         config = json.load(f)
@@ -60,17 +62,23 @@ def test(model_dir, num=-1):
         torch.set_default_dtype(torch.float64)
 
     dataset = GDataset(args)
+    args.n_nodes = dataset.n_nodes
 
     pos_weight = {}
     norm = {}
     adj_norm = {}
     for split in ['Train', 'Dev', 'Test']:
+        if not args.double_precision:
+            dataset.adjacency[split] = dataset.adjacency[split].astype(np.float32)
         adj = dataset.adjacency[split]
         adj_norm[split] = preprocess_adjacency(adj)
-        pos_weight = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
-        pos_weight[split] = torch.tensor([pos_weight], device=args.device)
+        pos_w = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
+        if not args.double_precision:
+            pos_w = pos_w.astype(np.float32)
+        pos_weight[split] = torch.tensor(pos_w, device=args.device)
         norm[split] = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
-        
+    
+    # 问题: 重新sample neg, 每次算的metrics会有浮动
     event_true_sub_indices = {}
     event_false_sub_indices = {}
     entity_true_sub_indices = {}
@@ -133,7 +141,7 @@ def test(model_dir, num=-1):
         cache_file_name = args.test_cache_file
     )
 
-    datasets = {'Dev':dev_dataset, 'Test':test_dataset}
+    datasets = {'Train': train_dataset, 'Dev':dev_dataset, 'Test':test_dataset}
     ######################
 
     # load pretrained model weights
@@ -153,33 +161,59 @@ def test(model_dir, num=-1):
     # 计算边
     # 画图
     # 统计
-    for split in ['Train', 'Dev', 'Test']:
+    for split in ['Test', 'Train', 'Dev']:
 
-        print(split, ':\n')
-
-        print('\tmetrics:')
+        print(split)
         _, mu = optimizer.eval(datasets[split], adj_norm[split], dataset.adjacency[split], split)
-
         hidden_emb = mu.data.detach().cpu().numpy()
-        metrics1 = test_model(hidden_emb, dataset.event_idx[split], event_true_sub_indices[split], event_false_sub_indices[split])
-        print("\t\tevent coref:" + format_metrics(metrics1, split))
-
-        entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
-        metrics2 = test_model(hidden_emb, entity_idx, entity_true_sub_indices[split], entity_false_sub_indices[split])
-        print("\t\tentity coref:" + format_metrics(metrics2, split))
-
-        metrics3 = test_model(hidden_emb, list(range(args.n_nodes[split])), recover_true_sub_indices[split], recover_false_sub_indices[split])
-        print("\t\treconstruct adj:" + format_metrics(metrics3, split))
-
-        # 计算边:
+        # 计算边
         pred_adj = sigmoid(np.dot(hidden_emb, hidden_emb.T))
-        # 统计
 
-        # 画图: 
-        visual_graph(model_dir, split, dataset.adjacency[split], pred_adj, num)
+        # event coref#########
+        print("event coref:")
+        orig_adj = dataset.event_coref_adj[split]
+        pred_adj = pred_adj[dataset.event_idx[split], :][:, dataset.event_idx[split]]
+        degree_analysis(model_dir, split+' event coref', orig_adj, pred_adj, num, threshold)
+        print("\tdegree analysis done")
 
+        # 可视化
+        visual_graph(model_dir, split+' event coref', orig_adj, pred_adj, num, threshold)
+        print('\tvisual graph done')
+
+        # entity coref##########
+        print("entity coref:")
+        orig_adj = dataset.entity_coref_adj[split]
+        entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
+        pred_adj = pred_adj[entity_idx, :][:, entity_idx]
+        degree_analysis(model_dir, split+' entity coref', orig_adj, pred_adj, num, threshold)
+        print("\tdegree analysis done")
+
+        # 可视化
+        visual_graph(model_dir, split+' entity coref', orig_adj, pred_adj, num, threshold)
+        print('\tvisual graph done')
+
+        print('recover adj:')
+        # # metrics#########
+        # print('\tmetrics:')
+        
+        # metrics1 = test_model(hidden_emb, dataset.event_idx[split], event_true_sub_indices[split], event_false_sub_indices[split])
+        # print("\t\tevent coref:" + format_metrics(metrics1, split))
+
+        # entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
+        # metrics2 = test_model(hidden_emb, entity_idx, entity_true_sub_indices[split], entity_false_sub_indices[split])
+        # print("\t\tentity coref:" + format_metrics(metrics2, split))
+
+        # metrics3 = test_model(hidden_emb, list(range(args.n_nodes[split])), recover_true_sub_indices[split], recover_false_sub_indices[split])
+        # print("\t\treconstruct adj:" + format_metrics(metrics3, split))
+
+        # 分析度
+        degree_analysis(model_dir, split+ ' recover', dataset.adjacency[split], pred_adj, num, threshold)
+        print("\tdegree analysis done")
+        # 可视化网络
+        visual_graph(model_dir, split+ ' recover', dataset.adjacency[split], pred_adj, num, threshold)
+        print('\tvisual graph done')
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    test(args.model_dir, args.num)
+    test(args.model_dir, args.num, args.threshold)
