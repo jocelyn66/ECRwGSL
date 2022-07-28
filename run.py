@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+from numpy import save
 from sklearn.model_selection import PredefinedSplit
 
 import torch.optim
@@ -269,6 +270,12 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
         #         elif counter == args.patience // 2:
         #             pass
         # ###################
+
+        if (epoch+1) % args.save_freq == 0:
+            model_path = os.path.join(save_dir, model_name+str(epoch+1))
+            torch.save(model.cpu().state_dict(), model_path)
+            model.to(args.device)
+
 
     logging.info("\t ---------------------------Optimization finished---------------------------")
 

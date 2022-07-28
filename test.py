@@ -157,7 +157,7 @@ def test(model_dir, num=-1, threshold=0.5):
     model.load_state_dict(torch.load(os.path.join(model_dir, model_name)))
 
     optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-    optimizer = GAEOptimizer(model, optim_method, args.n_nodes, norm, pos_weight, args.valid_freq, args.use_cuda)
+    optimizer = GAEOptimizer(model, optim_method, args.beta, args.n_nodes, norm, pos_weight, args.valid_freq, args.use_cuda)
 
     model.eval()
     # eval#############

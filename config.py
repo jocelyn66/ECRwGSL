@@ -2,6 +2,8 @@ import argparse
 from audioop import add
 from email.policy import default
 
+from yaml import parse
+
 # data configuration#####################
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", "--d", type=str, default="ecb+",
@@ -23,6 +25,7 @@ parser.add_argument("--debug", action="store_true",
                     help="Only use 1000 examples for debugging")
 parser.add_argument("--double-precision", action="store_true",
                     help="Machine precision")
+parser.add_argument("--save-freq", type=int, default=1000)
 
 # training configuration###############
 parser.add_argument("--regularizer", choices=[None, "N3", "F2"], default=None,
