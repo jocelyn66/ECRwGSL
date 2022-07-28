@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import time
 
 import torch
 from tqdm import tqdm
@@ -60,6 +61,8 @@ def test(model_dir, num=-1, threshold=0.5):
 
     if args.double_precision:
         torch.set_default_dtype(torch.float64)
+
+    # t = time.time()
 
     dataset = GDataset(args)
     args.n_nodes = dataset.n_nodes
@@ -164,7 +167,11 @@ def test(model_dir, num=-1, threshold=0.5):
     for split in ['Test', 'Train', 'Dev']:
 
         print(split)
+        # print("读3个set,构造三张图:", time.time() - t)
+        # t2 = time.time()
         _, mu = optimizer.eval(datasets[split], adj_norm[split], dataset.adjacency[split], split)
+        # pred_adj = torch.sigmoid(mu@mu.T)
+        # print("test预测:", time.time() - t2)
         hidden_emb = mu.data.detach().cpu().numpy()
         # 计算边
         pred_adj = sigmoid(np.dot(hidden_emb, hidden_emb.T))
@@ -172,24 +179,24 @@ def test(model_dir, num=-1, threshold=0.5):
         # event coref#########
         print("event coref:")
         orig_adj = dataset.event_coref_adj[split]
-        pred_adj = pred_adj[dataset.event_idx[split], :][:, dataset.event_idx[split]]
-        degree_analysis(model_dir, split+' event coref', orig_adj, pred_adj, num, threshold)
+        pred_adj_ = pred_adj[dataset.event_idx[split], :][:, dataset.event_idx[split]]
+        degree_analysis(model_dir, split+' event coref', orig_adj, pred_adj_, num, threshold)
         print("\tdegree analysis done")
 
         # 可视化
-        visual_graph(model_dir, split+' event coref', orig_adj, pred_adj, num, threshold)
+        visual_graph(model_dir, split+' event coref', orig_adj, pred_adj_, num, threshold)
         print('\tvisual graph done')
 
         # entity coref##########
         print("entity coref:")
         orig_adj = dataset.entity_coref_adj[split]
         entity_idx = list(set(range(args.n_nodes[split])) - set(dataset.event_idx[split]))
-        pred_adj = pred_adj[entity_idx, :][:, entity_idx]
-        degree_analysis(model_dir, split+' entity coref', orig_adj, pred_adj, num, threshold)
+        pred_adj_ = pred_adj[entity_idx, :][:, entity_idx]
+        degree_analysis(model_dir, split+' entity coref', orig_adj, pred_adj_, num, threshold)
         print("\tdegree analysis done")
 
         # 可视化
-        visual_graph(model_dir, split+' entity coref', orig_adj, pred_adj, num, threshold)
+        visual_graph(model_dir, split+' entity coref', orig_adj, pred_adj_, num, threshold)
         print('\tvisual graph done')
 
         print('recover adj:')

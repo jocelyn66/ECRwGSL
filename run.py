@@ -179,7 +179,7 @@ def train(args, hps=None, set_hp=None, save_dir=None, num=-1):
     regularizer = None
     if args.regularizer:
         regularizer = getattr(regularizers, args.regularizer)(args.reg)
-    optimizer = GAEOptimizer(model, optim_method, args.n_nodes, norm, pos_weight, args.valid_freq, use_cuda)
+    optimizer = GAEOptimizer(model, optim_method, args.beta, args.n_nodes, norm, pos_weight, args.valid_freq, use_cuda)
 
     # start train######################################
     counter = 0

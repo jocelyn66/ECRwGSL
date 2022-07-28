@@ -1,4 +1,5 @@
 import argparse
+from audioop import add
 from email.policy import default
 
 # data configuration#####################
@@ -46,6 +47,9 @@ parser.add_argument("--learning-rate", default=1e-5, type=float,
                     help="Learning rate")
 parser.add_argument('--weight_decay', type=float, default=1e-2)
 
+# regularization
+parser.add_argument("--beta", type=float, default=1.5, help="weight of nuclear norm")
+
 # configuration for optimal parameters
 parser.add_argument("--rand-search", "--rs", action='store_true',
                     help="perform random search for best configuration")
@@ -57,7 +61,7 @@ parser.add_argument('--plm_name', type=str, default='bert-base-uncased')
 parser.add_argument('--feat_dim', type=int, default=768, 
                     help='size of features, i.e. bert embedding dim')
 # encoder config#####################
-parser.add_argument('--rand_node_rate', type=int, default=0.2)
+parser.add_argument('--rand-node-rate', type=int, default=0.2)
 parser.add_argument("--encoder", type=str, choices = ['gae', 'gvae'], default='gae',
                     help="gsl model")
 parser.add_argument("--dropout", "--en-dropout", type=float, default=0.,
@@ -70,3 +74,5 @@ parser.add_argument('--hidden2', type=int, default=16, help='Number of units in 
 # decoder
 parser.add_argument("--decoder", type=str, default='')
 parser = parser.parse_args()
+
+

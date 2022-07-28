@@ -103,7 +103,7 @@ def visual_graph(path, split, orig, pred_adj, num=-1, threshold=0.5):  # 输入�
     # plot_adj(path, split+" original visual graph", orig, num)  # 原图
     
     pred_adj_ = np.where(pred_adj>threshold, 1, 0)
-    plot_adj(path, split+" pred visual graph", pred_adj_, num=num)
+    plot_adj(path, split+" pred graph - visual", pred_adj_, num=num)
 
     # plot_adj(path, split+" weighted pred visual graph", pred_adj, num=num, weighted=True)
 
@@ -130,4 +130,4 @@ def degree_analysis(path, split, orig, pred_adj, num=-1, threshold=0.5):
     median_degree = np.median(pred_degree)
     print("\t\tpred graph degree:", '\tmean:', mean_degree, '\tmedian:', median_degree, '\tmax:', max_degree, '\tmin', min_degree)
 
-    plot_hist(path, split+" original degree graph", split+" pred degree graph", degree, pred_degree, num=num)
+    plot_hist(path, split+" original graph - degree", split+" pred graph - degree", degree, pred_degree, num=num)
