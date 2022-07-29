@@ -86,7 +86,7 @@ class GAEOptimizer(object):
         self.optimizer = optimizer
         self.beta = beta
         if self.beta>0:
-            self.loss_fn = self.loss_function_gvae_nuclear_norm if model.gsl_name=='gave' else self.loss_function_gae_nuclear_norm
+            self.loss_fn = self.loss_function_gvae_nuclear_norm if model.gsl_name=='gave' else self.loss_function_gae_nuclear_norm2
         else:
             self.loss_fn = self.loss_function_gvae if model.gsl_name=='gave' else self.loss_function_gae
         # self.loss_fn = nn.CrossEntropyLoss(reduction='mean')
@@ -110,7 +110,7 @@ class GAEOptimizer(object):
             1 + 2 * logvar - mu.pow(2) - logvar.exp().pow(2), 1))
         return cost + KLD
 
-    def loss_function_gvae(self, preds, orig, mu, logvar, split='Train'):
+    def loss_function_gvae_nuclear_norm(self, preds, orig, mu, logvar, split='Train'):
         """GVAE"""
         cost = self.norm * F.binary_cross_entropy_with_logits(preds, orig, pos_weight=self.pos_weight[split])
 
@@ -122,6 +122,7 @@ class GAEOptimizer(object):
             1 + 2 * logvar - mu.pow(2) - logvar.exp().pow(2), 1))
         _, s, _ = torch.svd(preds)
         nuclear_norm = s.sum()
+        print("nuclear norm/rank = ", nuclear_norm)
         
         return cost + KLD + self.beta * nuclear_norm
 
@@ -138,10 +139,22 @@ class GAEOptimizer(object):
 
     def loss_function_gae_nuclear_norm(self, preds, orig, mu, logvar, split='Train'):
         """GAE"""
-        print('####nuclear_norm')
         cost = self.norm[split] * F.binary_cross_entropy_with_logits(preds, orig, pos_weight=self.pos_weight[split])
         _, s, _ = torch.svd(preds)
         nuclear_norm = s.sum()
+        print("nuclear norm/rank = ", nuclear_norm)
+
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        return cost + self.beta*nuclear_norm
+    
+    def loss_function_gae_nuclear_norm2(self, preds, orig, mu, logvar, split='Train'):
+        """GAE"""
+        cost = torch.linalg.norm(preds-orig)
+        nuclear_norm = torch.linalg.norm(preds, 'nuc')
+        print("nuclear norm/rank = ", nuclear_norm)
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -160,7 +173,6 @@ class GAEOptimizer(object):
         self.optimizer.step()
 
         return loss.item(), mu
-
 
     def eval(self, dataset, adj, orig, split):
         adj_ = torch.tensor(adj, device=self.device)
